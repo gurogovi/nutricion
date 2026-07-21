@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Nutrición">
+<meta name="theme-color" content="#ffffff">
+<title>Registro nutricional</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f5f3;
+    --surface: #ffffff;
+    --surface-2: #f0efec;
+    --border: rgba(0,0,0,0.10);
+    --border-strong: rgba(0,0,0,0.18);
+    --text: #0b0b0b;
+    --text-2: #52514e;
+    --text-3: #898781;
+    --accent: #0F6E56;
+    --accent-light: #E1F5EE;
+    --accent-text: #085041;
+    --danger: #a32d2d;
+    --danger-light: #fcebeb;
+    --warn-light: #faeeda;
+    --warn-text: #633806;
+    --radius: 12px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bot: env(safe-area-inset-bottom, 0px);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413;
+      --surface: #1e1e1c;
+      --surface-2: #262624;
+      --border: rgba(255,255,255,0.10);
+      --border-strong: rgba(255,255,255,0.18);
+      --text: #f5f5f3;
+      --text-2: #b8b7b0;
+      --text-3: #6e6d68;
+      --accent: #1D9E75;
+      --accent-light: #04342C;
+      --accent-text: #9FE1CB;
+      --danger: #f09595;
+      --danger-light: #501313;
+      --warn-light: #412402;
+      --warn-text: #FAC775;
+    }
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    color: var(--text);
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #app {
+    max-width: 430px;
+    margin: 0 auto;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
+
+  /* ── Top bar ── */
+  .topbar {
+    padding: calc(var(--safe-top) + 12px) 20px 12px;
+    background: var(--surface);
+    border-bottom: 0.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .topbar-left { display: flex; flex-direction: column; gap: 2px; }
+  .topbar-semana { font-size: 11px; color: var(--text-3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+  .topbar-dia { font-size: 18px; font-weight: 600; color: var(--text); }
+  .topbar-right { display: flex; gap: 8px; align-items: center; }
+  .icon-btn-top {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--surface-2); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-2); font-size: 18px;
+  }
+  .icon-btn-top:active { opacity: 0.6; }
+
+  /* ── Progress bar ── */
+  .progress-bar {
+    padding: 10px 20px 10px;
+    background: var(--surface);
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+  .prog-seg {
+    flex: 1; height: 3px; border-radius: 2px;
+    background: var(--surface-2); transition: background 0.2s;
+  }
+  .prog-seg.done { background: var(--accent); }
+  .prog-seg.active { background: var(--accent); opacity: 0.4; }
+
+  /* ── Scroll area ── */
+  .scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 16px 16px 0;
+  }
+
+  /* ── Ingesta card ── */
+  .ingesta-card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    border: 0.5px solid var(--border);
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .ingesta-header {
+    padding: 12px 16px;
+    border-bottom: 0.5px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .ingesta-tipo {
+    font-size: 13px; font-weight: 600; color: var(--text);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .ingesta-hora { font-size: 12px; color: var(--text-3); }
+  .badge-editado {
+    font-size: 10px; font-weight: 600;
+    background: var(--warn-light); color: var(--warn-text);
+    padding: 2px 7px; border-radius: 20px;
+  }
+
+  /* ── Item rows ── */
+  .item-row {
+    display: flex; align-items: center;
+    padding: 11px 16px; gap: 10px;
+    border-bottom: 0.5px solid var(--border);
+    transition: background 0.1s;
+  }
+  .item-row:last-child { border-bottom: none; }
+  .item-name { flex: 1; font-size: 15px; color: var(--text); line-height: 1.3; }
+  .item-name.adicion { color: var(--accent); }
+  .item-qty-wrap { display: flex; align-items: baseline; gap: 2px; }
+  .item-qty { font-size: 15px; font-weight: 500; color: var(--text); min-width: 36px; text-align: right; }
+  .item-unit { font-size: 12px; color: var(--text-3); }
+  .item-qty.sin-dato { color: var(--text-3); font-style: italic; }
+  .item-del {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--danger-light); border: none; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    color: var(--danger); font-size: 15px; flex-shrink: 0;
+  }
+  .edit-mode .item-del { display: flex; }
+  .item-qty-input {
+    width: 64px; text-align: right; font-size: 15px; font-weight: 500;
+    padding: 5px 8px; border-radius: 8px;
+    border: 1px solid var(--accent); background: var(--accent-light);
+    color: var(--text); display: none;
+  }
+  .edit-mode .item-qty-input { display: block; }
+  .edit-mode .item-qty { display: none; }
+
+  /* ── Add row ── */
+  .add-row {
+    display: none; padding: 10px 12px;
+    gap: 8px; align-items: center;
+    background: var(--surface-2);
+    border-top: 0.5px solid var(--border);
+  }
+  .edit-mode .add-row { display: flex; }
+  .add-name-input {
+    flex: 1; font-size: 14px; padding: 9px 12px;
+    border-radius: 10px; border: 0.5px solid var(--border-strong);
+    background: var(--surface); color: var(--text);
+  }
+  .add-qty-input {
+    width: 68px; font-size: 14px; padding: 9px 10px; text-align: right;
+    border-radius: 10px; border: 0.5px solid var(--border-strong);
+    background: var(--surface); color: var(--text);
+  }
+  .add-btn {
+    width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+    background: var(--accent); border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 20px; font-weight: 300;
+  }
+  .add-btn:active { opacity: 0.8; }
+
+  /* ── Bottom bar ── */
+  .bottombar {
+    padding: 12px 16px calc(var(--safe-bot) + 16px);
+    background: var(--surface);
+    border-top: 0.5px solid var(--border);
+    display: flex; flex-direction: column; gap: 8px;
+    flex-shrink: 0;
+  }
+  .btn-confirm {
+    width: 100%; padding: 16px; font-size: 16px; font-weight: 600;
+    border-radius: var(--radius); border: none;
+    background: var(--accent); color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    letter-spacing: 0.01em; transition: opacity 0.1s;
+  }
+  .btn-confirm:active { opacity: 0.85; transform: scale(0.99); }
+  .btn-secondary {
+    width: 100%; padding: 12px; font-size: 14px;
+    border-radius: var(--radius); border: 0.5px solid var(--border-strong);
+    background: transparent; color: var(--text-2); cursor: pointer;
+  }
+  .btn-secondary:active { background: var(--surface-2); }
+  .next-hint {
+    font-size: 12px; color: var(--text-3); text-align: center; padding: 2px 0;
+  }
+
+  /* ── Empty / Import screen ── */
+  .screen-import {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 32px 24px; gap: 16px; text-align: center;
+  }
+  .import-icon { font-size: 52px; opacity: 0.25; }
+  .import-title { font-size: 20px; font-weight: 600; color: var(--text); }
+  .import-sub { font-size: 14px; color: var(--text-2); line-height: 1.6; max-width: 280px; }
+  .import-btn-wrap { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 280px; margin-top: 8px; }
+  .btn-import-file {
+    padding: 15px; border-radius: var(--radius); cursor: pointer;
+    background: var(--accent); color: #fff; font-size: 15px; font-weight: 600;
+    border: none; width: 100%;
+  }
+  .btn-import-file:active { opacity: 0.85; }
+  .btn-demo {
+    padding: 13px; border-radius: var(--radius); cursor: pointer;
+    background: transparent; color: var(--text-2); font-size: 14px;
+    border: 0.5px solid var(--border-strong); width: 100%;
+  }
+  .btn-demo:active { background: var(--surface-2); }
+
+  /* ── Done screen ── */
+  .screen-done {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 32px 24px; gap: 14px; text-align: center;
+  }
+  .done-check { font-size: 56px; color: var(--accent); }
+  .done-title { font-size: 21px; font-weight: 600; }
+  .done-sub { font-size: 14px; color: var(--text-2); line-height: 1.6; max-width: 280px; }
+  .done-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 280px; margin-top: 8px; }
+  .btn-export {
+    padding: 15px; border-radius: var(--radius);
+    background: var(--accent); color: #fff;
+    font-size: 15px; font-weight: 600; border: none; cursor: pointer; width: 100%;
+  }
+  .btn-export:active { opacity: 0.85; }
+
+  /* ── Resumen screen ── */
+  .screen-resumen {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 16px;
+  }
+  .resumen-section { margin-bottom: 20px; }
+  .resumen-title { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; padding: 0 4px; }
+  .resumen-card { background: var(--surface); border-radius: var(--radius); border: 0.5px solid var(--border); overflow: hidden; }
+  .resumen-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; border-bottom: 0.5px solid var(--border); }
+  .resumen-row:last-child { border-bottom: none; }
+  .resumen-tipo { font-size: 14px; color: var(--text); font-weight: 500; }
+  .resumen-meta { display: flex; align-items: center; gap: 8px; }
+  .resumen-hora { font-size: 12px; color: var(--text-3); }
+  .badge-ok { font-size: 10px; font-weight: 600; background: var(--accent-light); color: var(--accent-text); padding: 2px 7px; border-radius: 20px; }
+  .badge-mod { font-size: 10px; font-weight: 600; background: var(--warn-light); color: var(--warn-text); padding: 2px 7px; border-radius: 20px; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(8px);
+    background: #1a1a18; color: #fff; padding: 10px 18px;
+    border-radius: 20px; font-size: 14px; font-weight: 500;
+    opacity: 0; transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none; white-space: nowrap; z-index: 100;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+  input:focus { outline: none; }
+
+  /* ── Selector de navegación ── */
+  .time-selector-bar {
+    padding: 8px 16px 6px;
+    background: var(--surface);
+    border-bottom: 0.5px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  .day-select {
+    flex: 1; font-size: 14px; font-weight: 500; color: var(--text);
+    background: var(--surface-2); border: 0.5px solid var(--border-strong);
+    border-radius: 8px; padding: 6px 10px; cursor: pointer;
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23898781' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+    padding-right: 26px;
+  }
+  .ing-select {
+    flex: 1; font-size: 13px; color: var(--text);
+    background: var(--surface-2); border: 0.5px solid var(--border-strong);
+    border-radius: 8px; padding: 6px 10px; cursor: pointer;
+    -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23898781' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+    padding-right: 26px;
+  }
+  .time-now-btn {
+    font-size: 12px; padding: 6px 10px; border-radius: 8px;
+    border: 0.5px solid var(--border-strong); background: transparent;
+    color: var(--accent); cursor: pointer; white-space: nowrap; font-weight: 500;
+  }
+  .time-now-btn:active { background: var(--accent-light); }
+
+  /* ── Hora de ejecución editable ── */
+  .hora-ejecucion-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 16px 4px;
+    background: var(--surface);
+  }
+  .hora-ejecucion-label {
+    font-size: 12px; color: var(--text-3);
+  }
+  .hora-ejecucion-input {
+    font-size: 14px; font-weight: 500; color: var(--text);
+    background: var(--surface-2); border: 0.5px solid var(--border-strong);
+    border-radius: 8px; padding: 5px 10px; width: 90px;
+    text-align: center;
+  }
+  .hora-ejecucion-input:focus {
+    border-color: var(--accent); background: var(--accent-light);
+  }
+  .hora-plan-hint {
+    font-size: 11px; color: var(--text-3);
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Pantalla: importar plan -->
+  <div id="screen-import" style="display:flex;flex-direction:column;height:100%">
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="topbar-semana">Nutrición</span>
+        <span class="topbar-dia">Registro diario</span>
+      </div>
+    </div>
+    <div class="screen-import">
+      <div class="import-icon">🥗</div>
+      <div class="import-title">Carga el plan de la semana</div>
+      <div class="import-sub">Importa el JSON generado el lunes para empezar a confirmar tus ingestas durante la semana.</div>
+      <div class="import-btn-wrap">
+        <button class="btn-import-file" onclick="document.getElementById('file-input').click()">Cargar plan JSON</button>
+        <input type="file" id="file-input" accept=".json" style="display:none" onchange="importarPlan(event)">
+        <button class="btn-demo" onclick="cargarDemo()">Usar datos de ejemplo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pantalla: registro principal -->
+  <div id="screen-main" style="display:none;flex-direction:column;height:100%">
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="topbar-semana" id="lbl-semana"></span>
+        <span class="topbar-dia" id="lbl-dia"></span>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn-top" onclick="irResumen()" title="Ver resumen del día">☰</button>
+        <button class="icon-btn-top" onclick="cambiarPlan()" title="Cargar otro plan">↩</button>
+      </div>
+    </div>
+    <div class="progress-bar" id="progress-bar"></div>
+    <div class="time-selector-bar" id="time-selector-bar">
+      <select class="day-select" id="day-select" onchange="onDayChange()" aria-label="Seleccionar día"></select>
+      <select class="ing-select" id="ing-select" onchange="onIngChange()" aria-label="Seleccionar ingesta"></select>
+      <button class="time-now-btn" onclick="irAhora()">Ahora</button>
+    </div>
+    <div class="hora-ejecucion-row" id="hora-ejecucion-row">
+      <span class="hora-ejecucion-label">Hora real</span>
+      <input class="hora-ejecucion-input" type="time" id="hora-ejecucion-input"
+        onchange="onHoraEjecucionChange()" aria-label="Hora de ejecución real">
+      <span class="hora-plan-hint" id="hora-plan-hint"></span>
+    </div>
+    <div class="scroll-area" id="scroll-area"></div>
+    <div class="bottombar">
+      <div class="next-hint" id="next-hint"></div>
+      <button class="btn-confirm" id="btn-confirm" onclick="accionPrincipal()">
+        <span id="btn-confirm-icon">✓</span>
+        <span id="btn-confirm-text">Confirmar</span>
+      </button>
+      <button class="btn-secondary" id="btn-edit" onclick="toggleEditar()">Editar</button>
+    </div>
+  </div>
+
+  <!-- Pantalla: día completo -->
+  <div id="screen-done" style="display:none;flex-direction:column;height:100%">
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="topbar-semana" id="done-semana"></span>
+        <span class="topbar-dia" id="done-dia"></span>
+      </div>
+    </div>
+    <div class="screen-done">
+      <div class="done-check">✓</div>
+      <div class="done-title">Día completado</div>
+      <div class="done-sub" id="done-sub"></div>
+      <div class="done-actions">
+        <button class="btn-export" onclick="exportarJSON()">Exportar registro JSON</button>
+        <button class="btn-demo" onclick="verResumenDia()">Ver resumen del día</button>
+        <button class="btn-demo" onclick="cambiarPlan()">Cargar otro plan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pantalla: resumen del día -->
+  <div id="screen-resumen" style="display:none;flex-direction:column;height:100%">
+    <div class="topbar">
+      <div class="topbar-left">
+        <span class="topbar-semana" id="res-semana"></span>
+        <span class="topbar-dia" id="res-dia"></span>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn-top" onclick="volverDesdeResumen()">✕</button>
+      </div>
+    </div>
+    <div class="screen-resumen" id="resumen-content"></div>
+    <div class="bottombar">
+      <button class="btn-export" onclick="exportarJSON()">Exportar registro JSON</button>
+    </div>
+  </div>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Estado global ─────────────────────────────────────────────
+let PLAN = null;
+let diaActual = null;
+let idxActual = 0;
+let modoEditar = false;
+let registros = {};  // { fecha: { idx: { tipo, hora, items, editado } } }
+let pantallaAnterior = 'main';
+
+// ── Helpers ───────────────────────────────────────────────────
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+function mostrarPantalla(nombre) {
+  ['import','main','done','resumen'].forEach(n => {
+    const el = document.getElementById('screen-' + n);
+    el.style.display = n === nombre ? 'flex' : 'none';
+    if (n === nombre) el.style.flexDirection = 'column';
+  });
+}
+
+const EMOJIS = {
+  desayuno: '☀️', almuerzo: '🍽', merienda: '🍎', cena: '🌙',
+  'pre-wod': '⚡', 'post-wod': '💪', 'pre-WOD': '⚡', 'post-WOD': '💪',
+};
+function emojiTipo(tipo) {
+  return EMOJIS[tipo?.toLowerCase()] || EMOJIS[tipo] || '•';
+}
+
+const DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+function labelFecha(fechaStr) {
+  const d = new Date(fechaStr + 'T12:00:00');
+  return DIAS[d.getDay()] + ' ' + d.getDate() + ' ' + MESES[d.getMonth()];
+}
+
+function ingestasDelDia() { return diaActual?.ingestas || []; }
+function regDia() { return registros[diaActual?.fecha] || {}; }
+
+function itemsActuales(idx) {
+  const reg = regDia()[idx];
+  if (reg) return JSON.parse(JSON.stringify(reg.items));
+  return JSON.parse(JSON.stringify(ingestasDelDia()[idx]?.plan_items || []));
+}
+
+// ── Detectar ingesta más próxima ──────────────────────────────
+function detectarIngestaCercana(ingestas) {
+  const ahora = new Date();
+  const minActual = ahora.getHours() * 60 + ahora.getMinutes();
+  let mejorIdx = 0;
+  let menorDiff = Infinity;
+  ingestas.forEach((ing, i) => {
+    if (!ing.hora) return;
+    const [h, m] = ing.hora.split(':').map(Number);
+    const diff = Math.abs(h * 60 + m - minActual);
+    if (diff < menorDiff) { menorDiff = diff; mejorIdx = i; }
+  });
+  return mejorIdx;
+}
+
+// ── Selectores de día y hora ──────────────────────────────────
+function poblarSelectorDia() {
+  const sel = document.getElementById('day-select');
+  if (!sel || !PLAN) return;
+  const dias = PLAN.dias || [];
+  const DIAS_ES = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  sel.innerHTML = dias.map((d, i) => {
+    const fecha = new Date(d.fecha + 'T12:00:00');
+    const label = DIAS_ES[fecha.getDay()] + ' ' + fecha.getDate() + ' ' + MESES[fecha.getMonth()];
+    const selected = d.fecha === diaActual?.fecha ? 'selected' : '';
+    return `<option value="${i}" ${selected}>${label}</option>`;
+  }).join('');
+}
+
+function poblarSelectorIngesta() {
+  const sel = document.getElementById('ing-select');
+  if (!sel || !diaActual) return;
+  const ingestas = ingestasDelDia();
+  sel.innerHTML = ingestas.map((ing, i) => {
+    const selected = i === idxActual ? 'selected' : '';
+    const confirmada = regDia()[i] ? '✓ ' : '';
+    return `<option value="${i}" ${selected}>${confirmada}${ing.hora || '--:--'} ${ing.tipo}</option>`;
+  }).join('');
+}
+
+function actualizarHoraEjecucion() {
+  const input = document.getElementById('hora-ejecucion-input');
+  const hint  = document.getElementById('hora-plan-hint');
+  if (!input || !diaActual) return;
+  const ing = ingestasDelDia()[idxActual];
+  if (!ing) return;
+  // Hora guardada en registro, o la hora del plan como valor inicial
+  const reg = regDia()[idxActual];
+  const horaGuardada = reg?.hora_real;
+  const horaPlan = ing.hora || '';
+  input.value = horaGuardada || horaPlan;
+  hint.textContent = horaGuardada && horaGuardada !== horaPlan
+    ? `(plan: ${horaPlan})`
+    : '';
+}
+
+function sincronizarSelectores() {
+  poblarSelectorDia();
+  poblarSelectorIngesta();
+  actualizarHoraEjecucion();
+}
+
+function onDayChange() {
+  const sel = document.getElementById('day-select');
+  const idx = parseInt(sel.value);
+  const dias = PLAN?.dias || [];
+  if (dias[idx]) {
+    diaActual = dias[idx];
+    idxActual = detectarIngestaCercana(ingestasDelDia());
+    const ing = ingestasDelDia();
+    while (idxActual < ing.length && regDia()[idxActual]) idxActual++;
+    if (idxActual >= ing.length) idxActual = 0;
+    modoEditar = false;
+    renderMain();
+  }
+}
+
+function onIngChange() {
+  const sel = document.getElementById('ing-select');
+  const idx = parseInt(sel.value);
+  if (!isNaN(idx) && idx >= 0 && idx < ingestasDelDia().length) {
+    idxActual = idx;
+    modoEditar = false;
+    renderIngestaActual();
+    actualizarBotones();
+    actualizarHoraEjecucion();
+    // Actualizar barra de progreso
+    const ingestas = ingestasDelDia();
+    const pb = document.getElementById('progress-bar');
+    pb.innerHTML = ingestas.map((ing, i) => {
+      const confirmada = !!regDia()[i];
+      const activa = i === idxActual;
+      return `<div class="prog-seg ${confirmada ? 'done' : activa ? 'active' : ''}"></div>`;
+    }).join('');
+    const siguiente = ingestas[idxActual + 1];
+    document.getElementById('next-hint').textContent = siguiente
+      ? `Siguiente: ${emojiTipo(siguiente.tipo)} ${siguiente.tipo}${siguiente.hora ? ' · ' + siguiente.hora : ''}`
+      : '';
+  }
+}
+
+function onHoraEjecucionChange() {
+  const input = document.getElementById('hora-ejecucion-input');
+  const hint  = document.getElementById('hora-plan-hint');
+  const nuevaHora = input.value;
+  if (!nuevaHora || !diaActual) return;
+  const ing = ingestasDelDia()[idxActual];
+  const horaPlan = ing?.hora || '';
+  // Guardar hora real en el registro (aunque no esté confirmada aún)
+  if (!registros[diaActual.fecha]) registros[diaActual.fecha] = {};
+  if (!registros[diaActual.fecha][idxActual]) {
+    registros[diaActual.fecha][idxActual] = {
+      tipo: ing.tipo, hora: horaPlan,
+      items: JSON.parse(JSON.stringify(ing.plan_items || [])),
+      editado: false,
+    };
+  }
+  registros[diaActual.fecha][idxActual].hora_real = nuevaHora;
+  hint.textContent = nuevaHora !== horaPlan ? `(plan: ${horaPlan})` : '';
+}
+
+function irAhora() {
+  const hoy = new Date().toISOString().split('T')[0];
+  const dias = PLAN?.dias || [];
+  const diaHoy = dias.find(d => d.fecha === hoy) || dias[0];
+  if (!diaHoy) return;
+  diaActual = diaHoy;
+  idxActual = detectarIngestaCercana(ingestasDelDia());
+  const ing = ingestasDelDia();
+  while (idxActual < ing.length && regDia()[idxActual]) idxActual++;
+  if (idxActual >= ing.length) idxActual = Math.max(0, ing.length - 1);
+  modoEditar = false;
+  renderMain();
+}
+
+// ── Importar plan ─────────────────────────────────────────────
+function importarPlan(e) {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try { iniciarPlan(JSON.parse(ev.target.result)); }
+    catch (err) { toast('JSON no válido'); }
+  };
+  r.readAsText(f);
+  e.target.value = '';
+}
+
+function iniciarPlan(json) {
+  PLAN = json;
+  registros = {};
+  modoEditar = false;
+  const hoy = new Date().toISOString().split('T')[0];
+  diaActual = (PLAN.dias || []).find(d => d.fecha === hoy) || (PLAN.dias || [])[0];
+  if (!diaActual || !diaActual.ingestas?.length) { toast('Sin ingestas en el plan'); return; }
+  idxActual = detectarIngestaCercana(ingestasDelDia());
+  // Avanzar al primer no confirmado
+  const ing = ingestasDelDia();
+  while (idxActual < ing.length && regDia()[idxActual]) idxActual++;
+  if (idxActual >= ing.length) idxActual = ing.length - 1;
+  renderMain();
+  mostrarPantalla('main');
+}
+
+function cambiarPlan() {
+  mostrarPantalla('import');
+}
+
+// ── Render pantalla principal ─────────────────────────────────
+function renderMain() {
+  if (!diaActual) return;
+  const ingestas = ingestasDelDia();
+  document.getElementById('lbl-semana').textContent = PLAN?.semana || '';
+  document.getElementById('lbl-dia').textContent = labelFecha(diaActual.fecha);
+
+  // Barra de progreso
+  const pb = document.getElementById('progress-bar');
+  pb.innerHTML = ingestas.map((ing, i) => {
+    const confirmada = !!regDia()[i];
+    const activa = i === idxActual;
+    return `<div class="prog-seg ${confirmada ? 'done' : activa ? 'active' : ''}"></div>`;
+  }).join('');
+
+  // Contenido
+  renderIngestaActual();
+
+  // Hint próxima ingesta
+  const hint = document.getElementById('next-hint');
+  const siguiente = ingestas[idxActual + 1];
+  hint.textContent = siguiente
+    ? `Siguiente: ${emojiTipo(siguiente.tipo)} ${siguiente.tipo} ${siguiente.hora ? '· ' + siguiente.hora : ''}`
+    : '';
+
+  // Botones
+  actualizarBotones();
+  sincronizarSelectores();
+}
+
+function renderIngestaActual() {
+  const ingestas = ingestasDelDia();
+  const ing = ingestas[idxActual];
+  if (!ing) return;
+  const items = itemsActuales(idxActual);
+  const editado = !!regDia()[idxActual]?.editado;
+
+  const area = document.getElementById('scroll-area');
+  const card = document.createElement('div');
+  card.className = 'ingesta-card' + (modoEditar ? ' edit-mode' : '');
+  card.id = 'ingesta-card';
+
+  let itemsHTML = items.map((item, i) => {
+    const nombre = item.nombre || '';
+    const qty = item.peso_g;
+    const unit = item.unidad || 'g';
+    const esAdicion = item.es_adicion;
+    return `
+      <div class="item-row" data-idx="${i}">
+        <div class="item-name ${esAdicion ? 'adicion' : ''}">${esAdicion ? '+ ' : ''}${nombre}</div>
+        <div class="item-qty-wrap">
+          <input class="item-qty-input" type="number" inputmode="decimal"
+            value="${qty ?? ''}" placeholder="—" step="1" min="0"
+            onchange="cambiarCantidad(${i}, this.value)"
+            aria-label="cantidad de ${nombre}">
+          <span class="item-qty ${qty == null ? 'sin-dato' : ''}">${qty != null ? qty : '—'}</span>
+          <span class="item-unit">${unit}</span>
+        </div>
+        <button class="item-del" onclick="eliminarItem(${i})" aria-label="Eliminar ${nombre}">✕</button>
+      </div>`;
+  }).join('');
+
+  card.innerHTML = `
+    <div class="ingesta-header">
+      <div class="ingesta-tipo">
+        <span>${emojiTipo(ing.tipo)}</span>
+        <span>${ing.tipo}</span>
+        ${editado ? '<span class="badge-editado">modificado</span>' : ''}
+      </div>
+      <span class="ingesta-hora">${ing.hora || ''}</span>
+    </div>
+    <div id="items-list">${itemsHTML}</div>
+    <div class="add-row">
+      <input class="add-name-input" id="add-nombre" type="text"
+        placeholder="Ingrediente nuevo" autocomplete="off" autocorrect="off">
+      <input class="add-qty-input" id="add-qty" type="number" inputmode="decimal"
+        placeholder="g" step="1" min="0">
+      <button class="add-btn" onclick="anadirItem()" aria-label="Añadir">+</button>
+    </div>
+  `;
+
+  area.innerHTML = '';
+  area.appendChild(card);
+  area.scrollTop = 0;
+}
+
+function actualizarBotones() {
+  const enEdicion = modoEditar;
+  const confirmada = !!regDia()[idxActual];
+  const btnConfirm = document.getElementById('btn-confirm');
+  const btnEdit = document.getElementById('btn-edit');
+  document.getElementById('btn-confirm-icon').textContent = enEdicion ? '✓' : '✓';
+  document.getElementById('btn-confirm-text').textContent = enEdicion ? 'Guardar cambios' : (confirmada ? 'Siguiente →' : 'Confirmar');
+  btnEdit.textContent = enEdicion ? 'Cancelar' : 'Editar';
+}
+
+// ── Acciones ──────────────────────────────────────────────────
+function toggleEditar() {
+  modoEditar = !modoEditar;
+  renderIngestaActual();
+  actualizarBotones();
+}
+
+function cambiarCantidad(idx, valor) {
+  const items = itemsActuales(idxActual);
+  items[idx].peso_g = valor === '' ? null : parseFloat(valor);
+  guardarReg(items, true);
+}
+
+function eliminarItem(idx) {
+  const items = itemsActuales(idxActual);
+  items.splice(idx, 1);
+  guardarReg(items, true);
+  renderIngestaActual();
+}
+
+function anadirItem() {
+  const nombre = document.getElementById('add-nombre').value.trim();
+  const qty = document.getElementById('add-qty').value;
+  if (!nombre) { toast('Escribe el nombre del ingrediente'); return; }
+  const items = itemsActuales(idxActual);
+  items.push({ nombre, peso_g: qty ? parseFloat(qty) : null, unidad: 'g', es_adicion: true });
+  guardarReg(items, true);
+  document.getElementById('add-nombre').value = '';
+  document.getElementById('add-qty').value = '';
+  renderIngestaActual();
+  toast(nombre + ' añadido');
+}
+
+function guardarReg(items, editado) {
+  const ing = ingestasDelDia()[idxActual];
+  if (!registros[diaActual.fecha]) registros[diaActual.fecha] = {};
+  const horaRealPrevia = registros[diaActual.fecha]?.[idxActual]?.hora_real;
+  const inputHora = document.getElementById('hora-ejecucion-input');
+  const horaReal = inputHora?.value || horaRealPrevia || ing.hora || '';
+  registros[diaActual.fecha][idxActual] = {
+    tipo: ing.tipo,
+    hora: ing.hora || '',
+    hora_real: horaReal,
+    items: JSON.parse(JSON.stringify(items)),
+    editado: editado || false,
+  };
+}
+
+function accionPrincipal() {
+  if (modoEditar) {
+    modoEditar = false;
+    const items = itemsActuales(idxActual);
+    guardarReg(items, true);
+    renderIngestaActual();
+    actualizarBotones();
+    toast('Cambios guardados');
+    return;
+  }
+
+  const ing = ingestasDelDia()[idxActual];
+  if (!regDia()[idxActual]) {
+    guardarReg(itemsActuales(idxActual), false);
+    toast(emojiTipo(ing.tipo) + ' ' + ing.tipo + ' confirmado');
+  }
+
+  const total = ingestasDelDia().length;
+  let siguiente = idxActual + 1;
+  while (siguiente < total && regDia()[siguiente]) siguiente++;
+
+  if (siguiente >= total) {
+    mostrarPantallaDone();
+  } else {
+    idxActual = siguiente;
+    modoEditar = false;
+    renderMain();
+  }
+}
+
+// ── Pantalla completado ───────────────────────────────────────
+function mostrarPantallaDone() {
+  const total = ingestasDelDia().length;
+  const confirmadas = Object.keys(regDia()).length;
+  document.getElementById('done-semana').textContent = PLAN?.semana || '';
+  document.getElementById('done-dia').textContent = labelFecha(diaActual.fecha);
+  document.getElementById('done-sub').textContent =
+    confirmadas + ' de ' + total + ' ingestas registradas. Exporta el JSON el lunes para el análisis de la semana.';
+  mostrarPantalla('done');
+}
+
+function verResumenDia() {
+  pantallaAnterior = 'done';
+  irResumen();
+}
+
+// ── Pantalla resumen ──────────────────────────────────────────
+function irResumen() {
+  pantallaAnterior = pantallaAnterior || 'main';
+  document.getElementById('res-semana').textContent = PLAN?.semana || '';
+  document.getElementById('res-dia').textContent = labelFecha(diaActual.fecha);
+  const ingestas = ingestasDelDia();
+  const reg = regDia();
+  const content = document.getElementById('resumen-content');
+
+  const confirmadas = ingestas.filter((_, i) => reg[i]);
+  const pendientes = ingestas.filter((_, i) => !reg[i]);
+
+  let html = '';
+
+  if (confirmadas.length) {
+    html += '<div class="resumen-section"><div class="resumen-title">Registradas</div><div class="resumen-card">';
+    html += ingestas.map((ing, i) => {
+      if (!reg[i]) return '';
+      const editado = reg[i].editado;
+      return `<div class="resumen-row">
+        <div class="resumen-tipo">${emojiTipo(ing.tipo)} ${ing.tipo}</div>
+        <div class="resumen-meta">
+          <span class="resumen-hora">${reg[i]?.hora_real && reg[i].hora_real !== ing.hora ? reg[i].hora_real + ' (plan: ' + (ing.hora||'') + ')' : (ing.hora || '')}</span>
+          <span class="${editado ? 'badge-mod' : 'badge-ok'}">${editado ? 'modificado' : 'confirmado'}</span>
+          <button style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:13px;padding:2px 4px"
+            onclick="editarDesdeResumen(${i})">Editar</button>
+        </div>
+      </div>`;
+    }).join('');
+    html += '</div></div>';
+  }
+
+  if (pendientes.length) {
+    html += '<div class="resumen-section"><div class="resumen-title">Pendientes</div><div class="resumen-card">';
+    html += ingestas.map((ing, i) => {
+      if (reg[i]) return '';
+      return `<div class="resumen-row">
+        <div class="resumen-tipo">${emojiTipo(ing.tipo)} ${ing.tipo}</div>
+        <div class="resumen-meta">
+          <span class="resumen-hora">${ing.hora || ''}</span>
+          <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:13px;padding:2px 4px;font-weight:500"
+            onclick="irAIngesta(${i})">Registrar →</button>
+        </div>
+      </div>`;
+    }).join('');
+    html += '</div></div>';
+  }
+
+  content.innerHTML = html || '<div style="color:var(--text-3);font-size:14px;padding:20px;text-align:center">Sin ingestas en el plan.</div>';
+  mostrarPantalla('resumen');
+}
+
+function volverDesdeResumen() {
+  if (pantallaAnterior === 'done') mostrarPantalla('done');
+  else { renderMain(); mostrarPantalla('main'); }
+}
+
+function editarDesdeResumen(idx) {
+  idxActual = idx;
+  modoEditar = true;
+  renderMain();
+  mostrarPantalla('main');
+  pantallaAnterior = 'main';
+}
+
+function irAIngesta(idx) {
+  idxActual = idx;
+  modoEditar = false;
+  renderMain();
+  mostrarPantalla('main');
+  pantallaAnterior = 'main';
+}
+
+// ── Exportar JSON ─────────────────────────────────────────────
+function exportarJSON() {
+  const salida = {
+    document_type: 'registro_real_semanal',
+    schema_version: '2026.v1',
+    semana: PLAN?.semana || '',
+    generado: new Date().toISOString(),
+    dias: Object.entries(registros).map(([fecha, regIdx]) => {
+      const diaP = (PLAN?.dias || []).find(d => d.fecha === fecha);
+      return {
+        fecha,
+        ingestas: Object.entries(regIdx).map(([i, reg]) => {
+          const ingPlan = diaP?.ingestas[parseInt(i)] || {};
+          const planItems = ingPlan.plan_items || [];
+          const realItems = reg.items.filter(it => !it.es_adicion);
+          const adiciones = reg.items.filter(it => it.es_adicion);
+          return {
+            tipo: reg.tipo,
+            hora_plan: reg.hora,
+            hora_real: reg.hora_real || reg.hora,
+            editado: reg.editado || false,
+            hora_modificada: !!(reg.hora_real && reg.hora_real !== reg.hora),
+            plan_items: planItems,
+            real_items: realItems,
+            adiciones: adiciones,
+          };
+        })
+      };
+    })
+  };
+  const blob = new Blob([JSON.stringify(salida, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = (PLAN?.semana || 'SXX').replace('-','_') + '_registro_real.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('Descargando registro');
+}
+
+// ── Demo ──────────────────────────────────────────────────────
+function cargarDemo() {
+  const hoy = new Date().toISOString().split('T')[0];
+  iniciarPlan({
+    semana: 'S31',
+    dias: [{
+      fecha: hoy,
+      ingestas: [
+        { tipo: 'desayuno', hora: '06:30', plan_items: [
+          { nombre: 'QFB', peso_g: 250, unidad: 'g' },
+          { nombre: 'Proteína Lidl vainilla', peso_g: 12, unidad: 'g' },
+          { nombre: 'Huevo cocido', peso_g: 174, unidad: 'g' },
+          { nombre: 'Kiwi', peso_g: 150, unidad: 'g' },
+          { nombre: 'Manzana', peso_g: 180, unidad: 'g' },
+          { nombre: 'Anacardos', peso_g: 11, unidad: 'g' },
+        ]},
+        { tipo: 'almuerzo', hora: '13:30', plan_items: [
+          { nombre: 'Dorada al horno', peso_g: 180, unidad: 'g' },
+          { nombre: 'Patata asada', peso_g: 200, unidad: 'g' },
+          { nombre: 'Verdura al horno', peso_g: 300, unidad: 'g' },
+          { nombre: 'Zanahoria cruda', peso_g: null, unidad: 'g' },
+        ]},
+        { tipo: 'merienda', hora: '16:30', plan_items: [
+          { nombre: 'Yogur griego light', peso_g: 200, unidad: 'g' },
+          { nombre: 'Frutos del bosque', peso_g: 80, unidad: 'g' },
+        ]},
+        { tipo: 'pre-WOD', hora: '19:15', plan_items: [
+          { nombre: 'Plátano', peso_g: 110, unidad: 'g' },
+        ]},
+        { tipo: 'post-WOD', hora: '21:10', plan_items: [
+          { nombre: 'Whey Nougat', peso_g: 30, unidad: 'g' },
+          { nombre: 'Creatina', peso_g: 7.2, unidad: 'g' },
+          { nombre: 'Skyr Lidl', peso_g: 150, unidad: 'g' },
+          { nombre: 'Cacao puro', peso_g: 6, unidad: 'g' },
+        ]},
+        { tipo: 'cena', hora: '21:30', plan_items: [
+          { nombre: 'QFB', peso_g: 275, unidad: 'g' },
+          { nombre: 'Chía', peso_g: 10, unidad: 'g' },
+          { nombre: 'Kiwi', peso_g: 150, unidad: 'g' },
+          { nombre: 'Calabacín rallado', peso_g: 375, unidad: 'g' },
+        ]},
+      ]
+    }]
+  });
+}
+</script>
+</body>
+</html>
