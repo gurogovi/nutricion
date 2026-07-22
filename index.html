@@ -323,6 +323,14 @@
     color: var(--accent); cursor: pointer; white-space: nowrap; font-weight: 500;
   }
   .time-now-btn:active { background: var(--accent-light); }
+  .nav-arrow {
+    width: 34px; height: 34px; flex-shrink: 0; border-radius: 8px;
+    border: 0.5px solid var(--border-strong); background: var(--surface-2);
+    color: var(--text); cursor: pointer; font-size: 20px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .nav-arrow:active { background: var(--accent-light); }
+  .nav-arrow:disabled { opacity: 0.3; cursor: default; }
 
   /* ── Hora de ejecución editable ── */
   .hora-ejecucion-row {
@@ -406,7 +414,9 @@
     <div class="progress-bar" id="progress-bar"></div>
     <div class="time-selector-bar" id="time-selector-bar">
       <select class="day-select" id="day-select" onchange="onDayChange()" aria-label="Seleccionar día"></select>
+      <button class="nav-arrow" id="nav-prev" onclick="navegarIngesta(-1)" aria-label="Ingesta anterior">‹</button>
       <select class="ing-select" id="ing-select" onchange="onIngChange()" aria-label="Seleccionar ingesta"></select>
+      <button class="nav-arrow" id="nav-next" onclick="navegarIngesta(1)" aria-label="Ingesta siguiente">›</button>
       <button class="time-now-btn" onclick="irAhora()">Ahora</button>
     </div>
     <div class="hora-ejecucion-row" id="hora-ejecucion-row">
@@ -734,6 +744,23 @@ function onIngChange() {
   }
 }
 
+function navegarIngesta(dir) {
+  const total = ingestasDelDia().length;
+  const nuevo = idxActual + dir;
+  if (nuevo < 0 || nuevo >= total) return;
+  idxActual = nuevo;
+  modoEditar = false;
+  renderMain();
+}
+
+function actualizarFlechas() {
+  const total = ingestasDelDia().length;
+  const prev = document.getElementById('nav-prev');
+  const next = document.getElementById('nav-next');
+  if (prev) prev.disabled = idxActual <= 0;
+  if (next) next.disabled = idxActual >= total - 1;
+}
+
 function onHoraEjecucionChange() {
   const input = document.getElementById('hora-ejecucion-input');
   const hint  = document.getElementById('hora-plan-hint');
@@ -828,6 +855,7 @@ function renderMain() {
 
   // Botones
   actualizarBotones();
+  actualizarFlechas();
   sincronizarSelectores();
 }
 
@@ -889,11 +917,11 @@ function renderIngestaActual() {
 
 function actualizarBotones() {
   const enEdicion = modoEditar;
-  const confirmada = !!regDia()[idxActual];
+  const eventoHecho = !!regDia()[idxActual]?.eventoCreado;
   const btnConfirm = document.getElementById('btn-confirm');
   const btnEdit = document.getElementById('btn-edit');
   document.getElementById('btn-confirm-icon').textContent = enEdicion ? '✓' : '✓';
-  document.getElementById('btn-confirm-text').textContent = enEdicion ? 'Guardar cambios' : (confirmada ? 'Siguiente →' : 'Confirmar');
+  document.getElementById('btn-confirm-text').textContent = enEdicion ? 'Guardar cambios' : (eventoHecho ? 'Confirmado ✓' : 'Confirmar');
   btnEdit.textContent = enEdicion ? 'Cancelar' : 'Editar';
 }
 
@@ -953,9 +981,13 @@ function accionPrincipal() {
   if (modoEditar) {
     modoEditar = false;
     guardarReg(itemsActuales(idxActual), true);
-    toast('Cambios guardados');
-    // continúa al bloque común de crear evento + avanzar
-  } else if (!regDia()[idxActual]) {
+    renderIngestaActual();
+    actualizarBotones();
+    toast('Cambios guardados · pulsa Confirmar para registrar');
+    return;
+  }
+
+  if (!regDia()[idxActual]) {
     guardarReg(itemsActuales(idxActual), false);
     toast(emojiTipo(ing.tipo) + ' ' + ing.tipo + ' confirmado');
   }
@@ -968,17 +1000,9 @@ function accionPrincipal() {
     gcalCrearEvento(diaActual.fecha, reg, ing.plan_items || []);
   }
 
-  const total = ingestasDelDia().length;
-  let siguiente = idxActual + 1;
-  while (siguiente < total && regDia()[siguiente]) siguiente++;
-
-  if (siguiente >= total) {
-    mostrarPantallaDone();
-  } else {
-    idxActual = siguiente;
-    modoEditar = false;
-    renderMain();
-  }
+  // No se auto-avanza: el usuario navega con las flechas ‹ › y accede
+  // a "día completado" desde el menú resumen (☰).
+  renderMain();
 }
 
 // ── Pantalla completado ───────────────────────────────────────
