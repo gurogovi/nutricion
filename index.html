@@ -331,6 +331,11 @@
   }
   .nav-arrow:active { background: var(--accent-light); }
   .nav-arrow:disabled { opacity: 0.3; cursor: default; }
+  .add-modo-select {
+    font-size: 13px; padding: 8px 4px; border-radius: 8px;
+    border: 0.5px solid var(--border-strong); background: var(--surface);
+    color: var(--text-2); flex-shrink: 0;
+  }
 
   /* ── Hora de ejecución editable ── */
   .hora-ejecucion-row {
@@ -939,8 +944,15 @@ function renderIngestaActual() {
     <div class="add-row">
       <input class="add-name-input" id="add-nombre" type="text"
         placeholder="Ingrediente nuevo" autocomplete="off" autocorrect="off">
+      <select class="add-modo-select" id="add-modo" onchange="onAddModoChange()" aria-label="Unidad de medida">
+        <option value="g">g</option>
+        <option value="ml">ml</option>
+        <option value="uds">uds</option>
+      </select>
       <input class="add-qty-input" id="add-qty" type="number" inputmode="decimal"
-        placeholder="g" step="1" min="0">
+        placeholder="g" step="1" min="0" aria-label="cantidad">
+      <input class="add-qty-input" id="add-gporud" type="number" inputmode="decimal"
+        placeholder="g/ud" step="1" min="0" style="display:none" aria-label="gramos por unidad">
       <button class="add-btn" onclick="anadirItem()" aria-label="Añadir">+</button>
     </div>
   `;
@@ -995,15 +1007,47 @@ function eliminarItem(idx) {
   renderIngestaActual();
 }
 
+function onAddModoChange() {
+  const modo = document.getElementById('add-modo').value;
+  const qty = document.getElementById('add-qty');
+  const gporud = document.getElementById('add-gporud');
+  if (modo === 'uds') {
+    qty.placeholder = 'uds';
+    gporud.style.display = '';
+  } else {
+    qty.placeholder = modo; // 'g' o 'ml'
+    gporud.style.display = 'none';
+  }
+}
+
 function anadirItem() {
   const nombre = document.getElementById('add-nombre').value.trim();
+  const modo = document.getElementById('add-modo').value;
   const qty = document.getElementById('add-qty').value;
   if (!nombre) { toast('Escribe el nombre del ingrediente'); return; }
+
   const items = itemsActuales(idxActual);
-  items.push({ nombre, peso_g: qty ? parseFloat(qty) : null, unidad: 'g', es_adicion: true });
+
+  if (modo === 'uds') {
+    const uds = qty ? parseFloat(qty) : null;
+    const gPorUd = document.getElementById('add-gporud').value;
+    const g = gPorUd ? parseFloat(gPorUd) : null;
+    if (uds == null) { toast('Indica el número de unidades'); return; }
+    if (g == null) { toast('Indica los gramos por unidad'); return; }
+    items.push({
+      nombre, modo: 'uds', uds, g_por_ud: g,
+      peso_g: Math.round(uds * g * 10) / 10, unidad: 'g', es_adicion: true,
+    });
+  } else {
+    // modo 'g' o 'ml' (numéricamente equivalentes; solo cambia la etiqueta)
+    items.push({ nombre, peso_g: qty ? parseFloat(qty) : null, unidad: modo, es_adicion: true });
+  }
+
   guardarReg(items, true);
   document.getElementById('add-nombre').value = '';
   document.getElementById('add-qty').value = '';
+  const gporud = document.getElementById('add-gporud');
+  if (gporud) gporud.value = '';
   renderIngestaActual();
   toast(nombre + ' añadido');
 }
@@ -1160,7 +1204,9 @@ function exportarJSON() {
           // Normaliza un item a los campos que entiende el pipeline: los ítems
           // en uds se exportan resueltos a gramos (peso_g), sin modo/uds/g_por_ud.
           const norm = it => {
-            const o = { nombre: it.nombre, peso_g: it.peso_g ?? null, unidad: 'g' };
+            // Descarta modo/uds/g_por_ud (el pipeline usa peso_g), pero conserva
+            // la unidad real: 'ml' para líquidos, 'g' para el resto.
+            const o = { nombre: it.nombre, peso_g: it.peso_g ?? null, unidad: it.unidad === 'ml' ? 'ml' : 'g' };
             if (it.es_adicion) o.es_adicion = true;
             return o;
           };
@@ -1204,10 +1250,11 @@ function cargarDemo() {
         { tipo: 'desayuno', hora: '06:30', plan_items: [
           { nombre: 'QFB', peso_g: 250, unidad: 'g' },
           { nombre: 'Proteína Lidl vainilla', peso_g: 12, unidad: 'g' },
-          { nombre: 'Huevo cocido', peso_g: 174, unidad: 'g' },
-          { nombre: 'Kiwi', peso_g: 150, unidad: 'g' },
-          { nombre: 'Manzana', peso_g: 180, unidad: 'g' },
+          { nombre: 'Huevo cocido', modo: 'uds', uds: 3, g_por_ud: 58, peso_g: 174, unidad: 'g' },
+          { nombre: 'Kiwi', modo: 'uds', uds: 2, g_por_ud: 75, peso_g: 150, unidad: 'g' },
+          { nombre: 'Manzana', modo: 'uds', uds: 1, g_por_ud: 180, peso_g: 180, unidad: 'g' },
           { nombre: 'Anacardos', peso_g: 11, unidad: 'g' },
+          { nombre: 'Café con leche desnatada', peso_g: 230, unidad: 'ml' },
         ]},
         { tipo: 'almuerzo', hora: '13:30', plan_items: [
           { nombre: 'Dorada al horno', peso_g: 180, unidad: 'g' },
