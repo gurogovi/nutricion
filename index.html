@@ -933,7 +933,8 @@ function anadirItem() {
 function guardarReg(items, editado) {
   const ing = ingestasDelDia()[idxActual];
   if (!registros[diaActual.fecha]) registros[diaActual.fecha] = {};
-  const horaRealPrevia = registros[diaActual.fecha]?.[idxActual]?.hora_real;
+  const previo = registros[diaActual.fecha]?.[idxActual];
+  const horaRealPrevia = previo?.hora_real;
   const inputHora = document.getElementById('hora-ejecucion-input');
   const horaReal = inputHora?.value || horaRealPrevia || ing.hora || '';
   registros[diaActual.fecha][idxActual] = {
@@ -942,25 +943,29 @@ function guardarReg(items, editado) {
     hora_real: horaReal,
     items: JSON.parse(JSON.stringify(items)),
     editado: editado || false,
+    eventoCreado: previo?.eventoCreado || false,
   };
 }
 
 function accionPrincipal() {
+  const ing = ingestasDelDia()[idxActual];
+
   if (modoEditar) {
     modoEditar = false;
-    const items = itemsActuales(idxActual);
-    guardarReg(items, true);
-    renderIngestaActual();
-    actualizarBotones();
+    guardarReg(itemsActuales(idxActual), true);
     toast('Cambios guardados');
-    return;
-  }
-
-  const ing = ingestasDelDia()[idxActual];
-  if (!regDia()[idxActual]) {
+    // continúa al bloque común de crear evento + avanzar
+  } else if (!regDia()[idxActual]) {
     guardarReg(itemsActuales(idxActual), false);
     toast(emojiTipo(ing.tipo) + ' ' + ing.tipo + ' confirmado');
-    gcalCrearEvento(diaActual.fecha, regDia()[idxActual], ing.plan_items || []);
+  }
+
+  // Crear evento una sola vez por ingesta, con los datos del registro
+  // (que ya incluyen cualquier edición). Idempotente vía flag eventoCreado.
+  const reg = regDia()[idxActual];
+  if (reg && !reg.eventoCreado) {
+    reg.eventoCreado = true;
+    gcalCrearEvento(diaActual.fecha, reg, ing.plan_items || []);
   }
 
   const total = ingestasDelDia().length;
