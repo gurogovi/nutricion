@@ -565,7 +565,7 @@ async function gcalCrearEvento(fecha, reg, planItems) {
     const hora = reg.hora_real || reg.hora || '12:00';
     const dur = GCAL_DUR[tipo] != null ? GCAL_DUR[tipo] : 30;
     const evento = {
-      summary: ((GCAL_EMO[tipo] || '') + ' ' + tipo).trim(),
+      summary: ((GCAL_EMO[tipo] || '') + ' ' + tipoDisplay(tipo)).trim(),
       description: gcalDescripcion(reg, planItems),
       start: { dateTime: gcalLocalDateTime(fecha, hora, 0), timeZone: 'Europe/Madrid' },
       end:   { dateTime: gcalLocalDateTime(fecha, hora, dur), timeZone: 'Europe/Madrid' },
@@ -626,6 +626,17 @@ function emojiTipo(tipo) {
   return EMOJIS[tipo?.toLowerCase()] || EMOJIS[tipo] || '•';
 }
 
+// Presentación del tipo: capitaliza la primera letra preservando 'WOD'.
+// desayuno→Desayuno · pre-WOD→Pre-WOD · post-WOD→Post-WOD
+function tipoDisplay(tipo) {
+  if (!tipo) return '';
+  const t = String(tipo);
+  const low = t.toLowerCase();
+  if (low === 'pre-wod')  return 'Pre-WOD';
+  if (low === 'post-wod') return 'Post-WOD';
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 const DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
 const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 function labelFecha(fechaStr) {
@@ -679,7 +690,7 @@ function poblarSelectorIngesta() {
   sel.innerHTML = ingestas.map((ing, i) => {
     const selected = i === idxActual ? 'selected' : '';
     const confirmada = regDia()[i] ? '✓ ' : '';
-    return `<option value="${i}" ${selected}>${confirmada}${ing.hora || '--:--'} ${ing.tipo}</option>`;
+    return `<option value="${i}" ${selected}>${confirmada}${ing.hora || '--:--'} ${tipoDisplay(ing.tipo)}</option>`;
   }).join('');
 }
 
@@ -739,7 +750,7 @@ function onIngChange() {
     }).join('');
     const siguiente = ingestas[idxActual + 1];
     document.getElementById('next-hint').textContent = siguiente
-      ? `Siguiente: ${emojiTipo(siguiente.tipo)} ${siguiente.tipo}${siguiente.hora ? ' · ' + siguiente.hora : ''}`
+      ? `Siguiente: ${emojiTipo(siguiente.tipo)} ${tipoDisplay(siguiente.tipo)}${siguiente.hora ? ' · ' + siguiente.hora : ''}`
       : '';
   }
 }
@@ -850,7 +861,7 @@ function renderMain() {
   const hint = document.getElementById('next-hint');
   const siguiente = ingestas[idxActual + 1];
   hint.textContent = siguiente
-    ? `Siguiente: ${emojiTipo(siguiente.tipo)} ${siguiente.tipo} ${siguiente.hora ? '· ' + siguiente.hora : ''}`
+    ? `Siguiente: ${emojiTipo(siguiente.tipo)} ${tipoDisplay(siguiente.tipo)} ${siguiente.hora ? '· ' + siguiente.hora : ''}`
     : '';
 
   // Botones
@@ -919,7 +930,7 @@ function renderIngestaActual() {
     <div class="ingesta-header">
       <div class="ingesta-tipo">
         <span>${emojiTipo(ing.tipo)}</span>
-        <span>${ing.tipo}</span>
+        <span>${tipoDisplay(ing.tipo)}</span>
         ${editado ? '<span class="badge-editado">modificado</span>' : ''}
       </div>
       <span class="ingesta-hora">${ing.hora || ''}</span>
@@ -1028,7 +1039,7 @@ function accionPrincipal() {
 
   if (!regDia()[idxActual]) {
     guardarReg(itemsActuales(idxActual), false);
-    toast(emojiTipo(ing.tipo) + ' ' + ing.tipo + ' confirmado');
+    toast(emojiTipo(ing.tipo) + ' ' + tipoDisplay(ing.tipo) + ' confirmado');
   }
 
   // Crear evento una sola vez por ingesta, con los datos del registro
@@ -1080,7 +1091,7 @@ function irResumen() {
       if (!reg[i]) return '';
       const editado = reg[i].editado;
       return `<div class="resumen-row">
-        <div class="resumen-tipo">${emojiTipo(ing.tipo)} ${ing.tipo}</div>
+        <div class="resumen-tipo">${emojiTipo(ing.tipo)} ${tipoDisplay(ing.tipo)}</div>
         <div class="resumen-meta">
           <span class="resumen-hora">${reg[i]?.hora_real && reg[i].hora_real !== ing.hora ? reg[i].hora_real + ' (plan: ' + (ing.hora||'') + ')' : (ing.hora || '')}</span>
           <span class="${editado ? 'badge-mod' : 'badge-ok'}">${editado ? 'modificado' : 'confirmado'}</span>
@@ -1097,7 +1108,7 @@ function irResumen() {
     html += ingestas.map((ing, i) => {
       if (reg[i]) return '';
       return `<div class="resumen-row">
-        <div class="resumen-tipo">${emojiTipo(ing.tipo)} ${ing.tipo}</div>
+        <div class="resumen-tipo">${emojiTipo(ing.tipo)} ${tipoDisplay(ing.tipo)}</div>
         <div class="resumen-meta">
           <span class="resumen-hora">${ing.hora || ''}</span>
           <button style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:13px;padding:2px 4px;font-weight:500"
