@@ -480,14 +480,13 @@ let pantallaAnterior = 'main';
 // ══════════════════════════════════════════════════════════════
 const GCAL_CLIENT_ID = '1066613969895-ndm4h64pboa8n6e7sh1ur1borsk87mdd.apps.googleusercontent.com';
 const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
-const GCAL_CALENDAR_NAME = 'Nutrición';
+const GCAL_CALENDAR_ID = '0274edf9f2787e6738862662b537ad3b9128dfc4f3173cf1f0f39b2cb21e33a7@group.calendar.google.com';
 
 // Duración (min) y emoji por tipo, según SKILL_generacion_ics v1.3
 const GCAL_DUR = { desayuno:30, almuerzo:45, merienda:20, cena:30, 'pre-WOD':15, 'post-WOD':15 };
 const GCAL_EMO = { desayuno:'☕', almuerzo:'🍽️', merienda:'🍎', cena:'🌙', 'pre-WOD':'⚡', 'post-WOD':'💪' };
 
 let gcalTokenClient = null;
-let gcalCalendarId = localStorage.getItem('gcal_calendar_id') || null;
 
 function gcalInit() {
   if (typeof google === 'undefined' || !google.accounts?.oauth2) {
@@ -502,8 +501,6 @@ function gcalInit() {
       if (resp && resp.access_token) {
         localStorage.setItem('gcal_token', resp.access_token);
         localStorage.setItem('gcal_expires_at', Date.now() + (resp.expires_in * 1000));
-        try { await gcalResolveCalendarId(); }
-        catch (e) { toast('Conectado, pero no se encontró calendario "' + GCAL_CALENDAR_NAME + '"'); }
         gcalUpdateUI();
         toast('Google Calendar conectado');
       }
@@ -521,21 +518,6 @@ function gcalConectado() {
   const t = localStorage.getItem('gcal_token');
   const exp = localStorage.getItem('gcal_expires_at');
   return !!(t && exp && Date.now() < Number(exp));
-}
-
-async function gcalResolveCalendarId() {
-  if (gcalCalendarId) return gcalCalendarId;
-  const token = localStorage.getItem('gcal_token');
-  const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
-    headers: { Authorization: 'Bearer ' + token },
-  });
-  if (!res.ok) throw new Error('calendarList ' + res.status);
-  const data = await res.json();
-  const cal = (data.items || []).find(c => c.summary === GCAL_CALENDAR_NAME);
-  if (!cal) throw new Error('calendario no encontrado');
-  gcalCalendarId = cal.id;
-  localStorage.setItem('gcal_calendar_id', cal.id);
-  return cal.id;
 }
 
 // Construye 'YYYY-MM-DDTHH:MM:SS' en hora local (sin pasar por UTC)
@@ -568,7 +550,6 @@ function gcalDescripcion(reg, planItems) {
 async function gcalCrearEvento(fecha, reg, planItems) {
   if (!gcalConectado()) return; // silencioso si no está conectado
   try {
-    if (!gcalCalendarId) await gcalResolveCalendarId();
     const token = localStorage.getItem('gcal_token');
     const tipo = reg.tipo;
     const hora = reg.hora_real || reg.hora || '12:00';
@@ -580,7 +561,7 @@ async function gcalCrearEvento(fecha, reg, planItems) {
       end:   { dateTime: gcalLocalDateTime(fecha, hora, dur), timeZone: 'Europe/Madrid' },
     };
     const res = await fetch(
-      'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(gcalCalendarId) + '/events',
+      'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(GCAL_CALENDAR_ID) + '/events',
       { method: 'POST',
         headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify(evento) }
