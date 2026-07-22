@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="Nutrición">
 <meta name="theme-color" content="#ffffff">
 <title>Registro nutricional</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -344,6 +345,23 @@
   .hora-plan-hint {
     font-size: 11px; color: var(--text-3);
   }
+
+  /* ── Google Calendar ── */
+  .btn-gcal {
+    padding: 13px; border-radius: var(--radius); cursor: pointer;
+    background: var(--surface); color: var(--text-2); font-size: 14px; font-weight: 500;
+    border: 0.5px solid var(--border-strong); width: 100%;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-gcal:active { background: var(--surface-2); }
+  .gcal-status-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 500; padding: 4px 10px; border-radius: 20px;
+    background: var(--surface-2); color: var(--text-3);
+  }
+  .gcal-status-pill.on { background: var(--accent-light); color: var(--accent-text); }
+  .gcal-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-3); }
+  .gcal-status-pill.on .gcal-dot { background: var(--accent); }
 </style>
 </head>
 <body>
@@ -365,6 +383,7 @@
         <button class="btn-import-file" onclick="document.getElementById('file-input').click()">Cargar plan JSON</button>
         <input type="file" id="file-input" accept=".json" style="display:none" onchange="importarPlan(event)">
         <button class="btn-demo" onclick="cargarDemo()">Usar datos de ejemplo</button>
+        <button class="btn-gcal" id="btn-gcal-import" onclick="gcalConnect()">📅 Conectar Google Calendar</button>
       </div>
     </div>
   </div>
@@ -377,6 +396,9 @@
         <span class="topbar-dia" id="lbl-dia"></span>
       </div>
       <div class="topbar-right">
+        <span class="gcal-status-pill" id="gcal-pill" onclick="gcalConnect()" title="Estado de Google Calendar" style="cursor:pointer">
+          <span class="gcal-dot"></span><span id="gcal-pill-text">Calendar</span>
+        </span>
         <button class="icon-btn-top" onclick="irResumen()" title="Ver resumen del día">☰</button>
         <button class="icon-btn-top" onclick="cambiarPlan()" title="Cargar otro plan">↩</button>
       </div>
@@ -452,6 +474,141 @@ let idxActual = 0;
 let modoEditar = false;
 let registros = {};  // { fecha: { idx: { tipo, hora, items, editado } } }
 let pantallaAnterior = 'main';
+
+// ══════════════════════════════════════════════════════════════
+// GOOGLE CALENDAR
+// ══════════════════════════════════════════════════════════════
+const GCAL_CLIENT_ID = '1066613969895-ndm4h64pboa8n6e7sh1ur1borsk87mdd.apps.googleusercontent.com';
+const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+const GCAL_CALENDAR_NAME = 'Nutrición';
+
+// Duración (min) y emoji por tipo, según SKILL_generacion_ics v1.3
+const GCAL_DUR = { desayuno:30, almuerzo:45, merienda:20, cena:30, 'pre-WOD':15, 'post-WOD':15 };
+const GCAL_EMO = { desayuno:'☕', almuerzo:'🍽️', merienda:'🍎', cena:'🌙', 'pre-WOD':'⚡', 'post-WOD':'💪' };
+
+let gcalTokenClient = null;
+let gcalCalendarId = localStorage.getItem('gcal_calendar_id') || null;
+
+function gcalInit() {
+  if (typeof google === 'undefined' || !google.accounts?.oauth2) {
+    // GIS aún no cargado; reintentar
+    setTimeout(gcalInit, 300);
+    return;
+  }
+  gcalTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GCAL_CLIENT_ID,
+    scope: GCAL_SCOPE,
+    callback: async (resp) => {
+      if (resp && resp.access_token) {
+        localStorage.setItem('gcal_token', resp.access_token);
+        localStorage.setItem('gcal_expires_at', Date.now() + (resp.expires_in * 1000));
+        try { await gcalResolveCalendarId(); }
+        catch (e) { toast('Conectado, pero no se encontró calendario "' + GCAL_CALENDAR_NAME + '"'); }
+        gcalUpdateUI();
+        toast('Google Calendar conectado');
+      }
+    },
+  });
+  gcalUpdateUI();
+}
+
+function gcalConnect() {
+  if (!gcalTokenClient) { toast('Cargando Google…'); gcalInit(); return; }
+  gcalTokenClient.requestAccessToken();
+}
+
+function gcalConectado() {
+  const t = localStorage.getItem('gcal_token');
+  const exp = localStorage.getItem('gcal_expires_at');
+  return !!(t && exp && Date.now() < Number(exp));
+}
+
+async function gcalResolveCalendarId() {
+  if (gcalCalendarId) return gcalCalendarId;
+  const token = localStorage.getItem('gcal_token');
+  const res = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!res.ok) throw new Error('calendarList ' + res.status);
+  const data = await res.json();
+  const cal = (data.items || []).find(c => c.summary === GCAL_CALENDAR_NAME);
+  if (!cal) throw new Error('calendario no encontrado');
+  gcalCalendarId = cal.id;
+  localStorage.setItem('gcal_calendar_id', cal.id);
+  return cal.id;
+}
+
+// Construye 'YYYY-MM-DDTHH:MM:SS' en hora local (sin pasar por UTC)
+function gcalLocalDateTime(fecha, hora, offsetMin) {
+  let [h, m] = (hora || '00:00').split(':').map(Number);
+  let total = h * 60 + m + (offsetMin || 0);
+  // manejar desbordes de día por si una ingesta +duración cruza medianoche
+  let dayShift = Math.floor(total / 1440);
+  total = ((total % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(total / 60)).padStart(2, '0');
+  const mm = String(total % 60).padStart(2, '0');
+  let fechaFinal = fecha;
+  if (dayShift !== 0) {
+    const d = new Date(fecha + 'T12:00:00');
+    d.setDate(d.getDate() + dayShift);
+    fechaFinal = d.toISOString().split('T')[0];
+  }
+  return fechaFinal + 'T' + hh + ':' + mm + ':00';
+}
+
+function gcalDescripcion(reg, planItems) {
+  const fmt = it => '- ' + (it.nombre || '') +
+    (it.peso_g != null ? ' ' + it.peso_g + (it.unidad || 'g') : '');
+  const real = (reg.items || []).filter(i => !i.es_adicion).map(fmt);
+  const adic = (reg.items || []).filter(i => i.es_adicion).map(i => fmt(i) + ' (añadido)');
+  const plan = (planItems || []).map(fmt);
+  return ['REAL:', ...real, ...adic, '', 'PLAN:', ...plan, '', 'NOTA:'].join('\n');
+}
+
+async function gcalCrearEvento(fecha, reg, planItems) {
+  if (!gcalConectado()) return; // silencioso si no está conectado
+  try {
+    if (!gcalCalendarId) await gcalResolveCalendarId();
+    const token = localStorage.getItem('gcal_token');
+    const tipo = reg.tipo;
+    const hora = reg.hora_real || reg.hora || '12:00';
+    const dur = GCAL_DUR[tipo] != null ? GCAL_DUR[tipo] : 30;
+    const evento = {
+      summary: ((GCAL_EMO[tipo] || '') + ' ' + tipo).trim(),
+      description: gcalDescripcion(reg, planItems),
+      start: { dateTime: gcalLocalDateTime(fecha, hora, 0), timeZone: 'Europe/Madrid' },
+      end:   { dateTime: gcalLocalDateTime(fecha, hora, dur), timeZone: 'Europe/Madrid' },
+    };
+    const res = await fetch(
+      'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(gcalCalendarId) + '/events',
+      { method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(evento) }
+    );
+    if (res.status === 401) {
+      // token caducado/revocado
+      localStorage.removeItem('gcal_token');
+      localStorage.removeItem('gcal_expires_at');
+      gcalUpdateUI();
+      toast('Sesión Calendar expirada — reconecta');
+      return;
+    }
+    if (!res.ok) { toast('Calendar: error ' + res.status); return; }
+    toast('📅 Evento creado');
+  } catch (e) {
+    toast('Calendar: ' + (e.message || 'error'));
+  }
+}
+
+function gcalUpdateUI() {
+  const on = gcalConectado();
+  const pill = document.getElementById('gcal-pill');
+  const pillText = document.getElementById('gcal-pill-text');
+  const btnImport = document.getElementById('btn-gcal-import');
+  if (pill) pill.classList.toggle('on', on);
+  if (pillText) pillText.textContent = on ? 'Calendar ✓' : 'Calendar';
+  if (btnImport) btnImport.textContent = on ? '📅 Google Calendar conectado ✓' : '📅 Conectar Google Calendar';
+}
 
 // ── Helpers ───────────────────────────────────────────────────
 function toast(msg) {
@@ -822,6 +979,7 @@ function accionPrincipal() {
   if (!regDia()[idxActual]) {
     guardarReg(itemsActuales(idxActual), false);
     toast(emojiTipo(ing.tipo) + ' ' + ing.tipo + ' confirmado');
+    gcalCrearEvento(diaActual.fecha, regDia()[idxActual], ing.plan_items || []);
   }
 
   const total = ingestasDelDia().length;
@@ -1013,6 +1171,9 @@ function cargarDemo() {
     }]
   });
 }
+
+// ── Arranque ──────────────────────────────────────────────────
+window.addEventListener('load', gcalInit);
 </script>
 </body>
 </html>
