@@ -873,9 +873,33 @@ function renderIngestaActual() {
 
   let itemsHTML = items.map((item, i) => {
     const nombre = item.nombre || '';
+    const esAdicion = item.es_adicion;
+    const esUds = item.modo === 'uds';
+
+    if (esUds) {
+      // Ítem por unidades: se edita el nº de uds; el peso en g se recalcula
+      const uds = item.uds;
+      const pesoG = item.peso_g;
+      const gPorUd = item.g_por_ud;
+      const equivTxt = (pesoG != null && gPorUd != null) ? `${pesoG}g` : (gPorUd == null ? 'sin equiv.' : '—');
+      return `
+      <div class="item-row" data-idx="${i}">
+        <div class="item-name ${esAdicion ? 'adicion' : ''}">${esAdicion ? '+ ' : ''}${nombre}</div>
+        <div class="item-qty-wrap">
+          <input class="item-qty-input" type="number" inputmode="decimal"
+            value="${uds ?? ''}" placeholder="—" step="1" min="0"
+            onchange="cambiarUnidades(${i}, this.value)"
+            aria-label="unidades de ${nombre}">
+          <span class="item-qty ${uds == null ? 'sin-dato' : ''}">${uds != null ? uds : '—'}</span>
+          <span class="item-unit">uds · ${equivTxt}</span>
+        </div>
+        <button class="item-del" onclick="eliminarItem(${i})" aria-label="Eliminar ${nombre}">✕</button>
+      </div>`;
+    }
+
+    // Ítem normal en gramos
     const qty = item.peso_g;
     const unit = item.unidad || 'g';
-    const esAdicion = item.es_adicion;
     return `
       <div class="item-row" data-idx="${i}">
         <div class="item-name ${esAdicion ? 'adicion' : ''}">${esAdicion ? '+ ' : ''}${nombre}</div>
@@ -936,6 +960,21 @@ function cambiarCantidad(idx, valor) {
   const items = itemsActuales(idxActual);
   items[idx].peso_g = valor === '' ? null : parseFloat(valor);
   guardarReg(items, true);
+}
+
+function cambiarUnidades(idx, valor) {
+  const items = itemsActuales(idxActual);
+  const item = items[idx];
+  const uds = valor === '' ? null : parseFloat(valor);
+  item.uds = uds;
+  // Recalcular peso en gramos según la equivalencia por unidad
+  if (uds != null && item.g_por_ud != null) {
+    item.peso_g = Math.round(uds * item.g_por_ud * 10) / 10;
+  } else {
+    item.peso_g = null;
+  }
+  guardarReg(items, true);
+  renderIngestaActual(); // refresca el "· Xg" mostrado junto a las uds
 }
 
 function eliminarItem(idx) {
@@ -1107,9 +1146,16 @@ function exportarJSON() {
         fecha,
         ingestas: Object.entries(regIdx).map(([i, reg]) => {
           const ingPlan = diaP?.ingestas[parseInt(i)] || {};
-          const planItems = ingPlan.plan_items || [];
-          const realItems = reg.items.filter(it => !it.es_adicion);
-          const adiciones = reg.items.filter(it => it.es_adicion);
+          // Normaliza un item a los campos que entiende el pipeline: los ítems
+          // en uds se exportan resueltos a gramos (peso_g), sin modo/uds/g_por_ud.
+          const norm = it => {
+            const o = { nombre: it.nombre, peso_g: it.peso_g ?? null, unidad: 'g' };
+            if (it.es_adicion) o.es_adicion = true;
+            return o;
+          };
+          const planItems = (ingPlan.plan_items || []).map(norm);
+          const realItems = reg.items.filter(it => !it.es_adicion).map(norm);
+          const adiciones = reg.items.filter(it => it.es_adicion).map(norm);
           return {
             tipo: reg.tipo,
             hora_plan: reg.hora,
