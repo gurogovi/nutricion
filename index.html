@@ -336,6 +336,10 @@
     border: 0.5px solid var(--border-strong); background: var(--surface);
     color: var(--text-2); flex-shrink: 0;
   }
+  .app-version {
+    margin-top: 24px; text-align: center;
+    font-size: 11px; color: var(--text-3); opacity: 0.7;
+  }
 
   /* ── Hora de ejecución editable ── */
   .hora-ejecucion-row {
@@ -398,6 +402,7 @@
         <button class="btn-demo" onclick="cargarDemo()">Usar datos de ejemplo</button>
         <button class="btn-gcal" id="btn-gcal-import" onclick="gcalConnect()">📅 Conectar Google Calendar</button>
       </div>
+      <div class="app-version" id="app-version"></div>
     </div>
   </div>
 
@@ -489,6 +494,11 @@ let idxActual = 0;
 let modoEditar = false;
 let registros = {};  // { fecha: { idx: { tipo, hora, items, editado } } }
 let pantallaAnterior = 'main';
+
+// ══════════════════════════════════════════════════════════════
+// VERSIÓN DE LA APP  (actualizar en cada despliegue)
+// ══════════════════════════════════════════════════════════════
+const APP_VERSION = 'v3.9';
 
 // ══════════════════════════════════════════════════════════════
 // GOOGLE CALENDAR
@@ -1287,7 +1297,12 @@ function cargarDemo() {
 }
 
 // ── Arranque ──────────────────────────────────────────────────
-window.addEventListener('load', gcalInit);
+// ── Arranque ──────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  const vEl = document.getElementById('app-version');
+  if (vEl) vEl.textContent = APP_VERSION;
+  gcalInit();
+});
 </script>
 </body>
 </html>
