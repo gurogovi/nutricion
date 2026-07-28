@@ -173,23 +173,29 @@
   /* ── Add row ── */
   .add-row {
     display: none; padding: 10px 12px;
-    gap: 8px; align-items: center;
+    flex-direction: column; gap: 8px;
     background: var(--surface-2);
     border-top: 0.5px solid var(--border);
   }
   .edit-mode .add-row { display: flex; }
+  .add-row-qty {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%;
+  }
   .add-name-input {
-    flex: 1; font-size: 17px; padding: 9px 12px;
+    width: 100%; font-size: 17px; padding: 9px 12px;
     border-radius: 10px; border: 0.5px solid var(--border-strong);
     background: var(--surface); color: var(--text);
+    min-width: 0;
   }
   .add-qty-input {
-    width: 68px; font-size: 17px; padding: 9px 10px; text-align: right;
+    flex: 1 1 0; min-width: 0;
+    font-size: 17px; padding: 9px 10px; text-align: right;
     border-radius: 10px; border: 0.5px solid var(--border-strong);
     background: var(--surface); color: var(--text);
   }
   .add-btn {
-    width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+    width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
     background: var(--accent); border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     color: #fff; font-size: 24px; font-weight: 300;
@@ -332,9 +338,9 @@
   .nav-arrow:active { background: var(--accent-light); }
   .nav-arrow:disabled { opacity: 0.3; cursor: default; }
   .add-modo-select {
-    font-size: 15px; padding: 8px 4px; border-radius: 8px;
+    font-size: 15px; padding: 8px 8px; border-radius: 8px;
     border: 0.5px solid var(--border-strong); background: var(--surface);
-    color: var(--text-2); flex-shrink: 0;
+    color: var(--text-2); flex-shrink: 0; min-width: 56px;
   }
   .app-version {
     margin-top: 24px; text-align: center;
@@ -498,7 +504,7 @@ let pantallaAnterior = 'main';
 // ══════════════════════════════════════════════════════════════
 // VERSIÓN DE LA APP  (actualizar en cada despliegue)
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v4.0';
+const APP_VERSION = 'v4.1';
 
 // ══════════════════════════════════════════════════════════════
 // GOOGLE CALENDAR
@@ -954,16 +960,18 @@ function renderIngestaActual() {
     <div class="add-row">
       <input class="add-name-input" id="add-nombre" type="text"
         placeholder="Ingrediente nuevo" autocomplete="off" autocorrect="off">
-      <select class="add-modo-select" id="add-modo" onchange="onAddModoChange()" aria-label="Unidad de medida">
-        <option value="g">g</option>
-        <option value="ml">ml</option>
-        <option value="uds">uds</option>
-      </select>
-      <input class="add-qty-input" id="add-qty" type="number" inputmode="decimal"
-        placeholder="g" step="1" min="0" aria-label="cantidad">
-      <input class="add-qty-input" id="add-gporud" type="number" inputmode="decimal"
-        placeholder="g/ud" step="1" min="0" style="display:none" aria-label="gramos por unidad">
-      <button class="add-btn" onclick="anadirItem()" aria-label="Añadir">+</button>
+      <div class="add-row-qty">
+        <select class="add-modo-select" id="add-modo" onchange="onAddModoChange()" aria-label="Unidad de medida">
+          <option value="g">g</option>
+          <option value="ml">ml</option>
+          <option value="uds">uds</option>
+        </select>
+        <input class="add-qty-input" id="add-qty" type="number" inputmode="decimal"
+          placeholder="g" step="1" min="0" aria-label="cantidad">
+        <input class="add-qty-input" id="add-gporud" type="number" inputmode="decimal"
+          placeholder="g/ud" step="1" min="0" style="display:none" aria-label="gramos por unidad">
+        <button class="add-btn" onclick="anadirItem()" aria-label="Añadir">+</button>
+      </div>
     </div>
   `;
 
