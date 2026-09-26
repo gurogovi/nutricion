@@ -475,7 +475,9 @@
         <input type="file" id="file-input" accept=".json" style="display:none" onchange="importarPlan(event)">
         <button class="btn-demo" onclick="cargarDemo()">Usar datos de ejemplo</button>
         <button class="btn-gcal" id="btn-gcal-import" onclick="gcalConnect()">📅 Conectar Google Calendar</button>
+        <button class="btn-demo" id="btn-reset" style="display:none" onclick="resetTotal()">Borrar lo guardado y empezar de cero</button>
       </div>
+      <div class="import-sub" id="import-guardado"></div>
       <div class="app-version" id="app-version"></div>
     </div>
   </div>
@@ -567,12 +569,128 @@ let diaActual = null;
 let idxActual = 0;
 let modoEditar = false;
 let registros = {};  // { fecha: { idx: { tipo, hora, items, editado } } }
+
+// ── Persistencia local (v4.4) ─────────────────────────────────
+// Hasta v4.3 PLAN y registros vivían solo en memoria: si iOS descargaba
+// la web app se perdía el plan y la semana entera de registros, y la
+// única copia real era la de Google Calendar. Ahora el estado se guarda
+// en localStorage en cada mutación y se restaura al arrancar. Calendar
+// se mantiene como registro paralelo, no como fuente de verdad.
+const STORAGE_KEY = 'nutricion_estado';
+const STORAGE_VERSION = 1;
+
+// Las claves que empiezan por "_" son estado volátil de UI y no se guardan.
+const _sinInternos = (k, v) => (typeof k === 'string' && k.startsWith('_')) ? undefined : v;
+
+function guardarEstado() {
+  if (!PLAN) return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      storage_version: STORAGE_VERSION,
+      app_version:     APP_VERSION,
+      guardado:        new Date().toISOString(),
+      semana:          PLAN.semana || '',
+      fecha_activa:    diaActual?.fecha || null,
+      plan:            PLAN,
+      registros:       registros,
+    }, _sinInternos));
+  } catch (e) {
+    // Cuota agotada, o almacenamiento bloqueado (Safari en privado).
+    toast('Aviso: no se pudo guardar en el dispositivo');
+  }
+}
+
+function leerEstado() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const est = JSON.parse(raw);
+    if (est?.storage_version !== STORAGE_VERSION) return null;
+    if (!est?.plan?.dias?.length) return null;
+    return est;
+  } catch (e) { return null; }
+}
+
+function borrarEstado() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+}
+
+// Al reimportar un plan de la MISMA semana solo se conservan los registros
+// cuya ingesta sigue en la misma posición con el mismo tipo y hora. Los
+// registros se guardan por índice: si el plan se regenera y cambia el
+// orden, un índice viejo apuntaría a otra comida.
+function registrosCompatibles(planNuevo, regsPrevios) {
+  const out = {};
+  let conservados = 0, descartados = 0;
+  for (const dia of (planNuevo.dias || [])) {
+    const prev = regsPrevios?.[dia.fecha];
+    if (!prev) continue;
+    for (const [idx, reg] of Object.entries(prev)) {
+      const ing = (dia.ingestas || [])[Number(idx)];
+      if (ing && ing.tipo === reg.tipo && (ing.hora || '') === (reg.hora || '')) {
+        if (!out[dia.fecha]) out[dia.fecha] = {};
+        out[dia.fecha][idx] = reg;
+        conservados++;
+      } else {
+        descartados++;
+      }
+    }
+  }
+  return { registros: out, conservados, descartados };
+}
+
+function restaurarEstado() {
+  const est = leerEstado();
+  if (!est) return false;
+  PLAN = est.plan;
+  registros = est.registros || {};
+  const hoy = new Date().toISOString().split('T')[0];
+  diaActual = (PLAN.dias || []).find(d => d.fecha === hoy)
+           || (PLAN.dias || []).find(d => d.fecha === est.fecha_activa)
+           || (PLAN.dias || [])[0];
+  if (!diaActual || !diaActual.ingestas?.length) {
+    PLAN = null; registros = {}; diaActual = null;
+    return false;
+  }
+  modoEditar = false;
+  idxActual = detectarIngestaCercana(ingestasDelDia());
+  const ing = ingestasDelDia();
+  while (idxActual < ing.length && regDia()[idxActual]) idxActual++;
+  if (idxActual >= ing.length) idxActual = ing.length - 1;
+  renderMain();
+  mostrarPantalla('main');
+  const n = Object.values(registros).reduce((a, d) => a + Object.keys(d).length, 0);
+  toast('Plan ' + (PLAN.semana || '') + ' recuperado · ' + n + ' ingestas registradas');
+  return true;
+}
+
+function resetTotal() {
+  if (!confirm('Se borrarán el plan y todos los registros guardados en este dispositivo. Los eventos ya creados en Calendar no se tocan. ¿Seguro?')) return;
+  borrarEstado();
+  PLAN = null; registros = {}; diaActual = null; idxActual = 0; modoEditar = false;
+  mostrarPantalla('import');
+  actualizarPantallaImport();
+  toast('Datos borrados');
+}
+
+function actualizarPantallaImport() {
+  const est = leerEstado();
+  const btn = document.getElementById('btn-reset');
+  if (btn) btn.style.display = est ? '' : 'none';
+  const info = document.getElementById('import-guardado');
+  if (info) {
+    info.textContent = est
+      ? 'Guardado en este dispositivo: ' + (est.semana || 'plan') + ' · ' +
+        new Date(est.guardado).toLocaleString('es-ES')
+      : '';
+  }
+}
 let pantallaAnterior = 'main';
 
 // ══════════════════════════════════════════════════════════════
 // VERSIÓN DE LA APP  (actualizar en cada despliegue)
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v4.3';
+const APP_VERSION = 'v4.4';
 
 // ══════════════════════════════════════════════════════════════
 // GOOGLE CALENDAR
@@ -675,6 +793,13 @@ async function gcalCrearEvento(fecha, reg, planItems) {
       return;
     }
     if (!res.ok) { toast('Calendar: error ' + res.status); return; }
+    // v4.4: guardar el eventId devuelto. Todavía no se usa, pero sin él no
+    // se podrá actualizar el evento cuando se implemente la edición diferida
+    // de una comida ya registrada (backlog #5).
+    const creado = await res.json().catch(() => null);
+    reg.eventoCreado = true;
+    reg.eventId = creado?.id || null;
+    guardarEstado();
     toast('📅 Evento creado');
   } catch (e) {
     toast('Calendar: ' + (e.message || 'error'));
@@ -902,16 +1027,31 @@ function importarPlan(e) {
   if (!f) return;
   const r = new FileReader();
   r.onload = ev => {
-    try { iniciarPlan(JSON.parse(ev.target.result)); }
+    try { aplicarPlanImportado(JSON.parse(ev.target.result)); }
     catch (err) { toast('JSON no válido'); }
   };
   r.readAsText(f);
   e.target.value = '';
 }
 
-function iniciarPlan(json) {
+// Reimportar el plan de la semana en curso NO debe borrar lo registrado.
+function aplicarPlanImportado(json) {
+  const est = leerEstado();
+  let regs = {};
+  if (est && (est.semana || '') === (json.semana || '')) {
+    const r = registrosCompatibles(json, est.registros);
+    regs = r.registros;
+    if (r.conservados || r.descartados) {
+      toast('Plan actualizado · ' + r.conservados + ' registros conservados' +
+            (r.descartados ? ', ' + r.descartados + ' descartados' : ''));
+    }
+  }
+  iniciarPlan(json, regs);
+}
+
+function iniciarPlan(json, regsPrevios) {
   PLAN = json;
-  registros = {};
+  registros = regsPrevios || {};
   modoEditar = false;
   const hoy = new Date().toISOString().split('T')[0];
   diaActual = (PLAN.dias || []).find(d => d.fecha === hoy) || (PLAN.dias || [])[0];
@@ -921,12 +1061,14 @@ function iniciarPlan(json) {
   const ing = ingestasDelDia();
   while (idxActual < ing.length && regDia()[idxActual]) idxActual++;
   if (idxActual >= ing.length) idxActual = ing.length - 1;
+  guardarEstado();
   renderMain();
   mostrarPantalla('main');
 }
 
 function cambiarPlan() {
   mostrarPantalla('import');
+  actualizarPantallaImport();
 }
 
 // ── Render pantalla principal ─────────────────────────────────
@@ -1161,8 +1303,10 @@ function guardarReg(items, editado) {
     items: JSON.parse(JSON.stringify(items)),
     editado: editado || false,
     eventoCreado: previo?.eventoCreado || false,
+    eventId: previo?.eventId || null,
     nota: previo?.nota || '',
   };
+  guardarEstado();
 }
 
 function guardarNota(valor) {
@@ -1175,6 +1319,7 @@ function guardarNota(valor) {
   const notaPrevia = regDia()[idxActual]?.nota || '';
   if (nota === notaPrevia) return;
   registros[diaActual.fecha][idxActual].nota = nota;
+  guardarEstado();
   const evYaCreado = !!regDia()[idxActual]?.eventoCreado;
   if (evYaCreado) {
     toast('Nota guardada (no se actualiza en Calendar)');
@@ -1200,12 +1345,17 @@ function accionPrincipal() {
     toast(emojiTipo(ing.tipo) + ' ' + tipoDisplay(ing.tipo) + ' confirmado');
   }
 
-  // Crear evento una sola vez por ingesta, con los datos del registro
-  // (que ya incluyen cualquier edición). Idempotente vía flag eventoCreado.
+  // Calendar sigue recibiendo cada confirmación como registro paralelo,
+  // aunque desde v4.4 la fuente de verdad es el estado local.
+  // v4.4: eventoCreado se marca al CONFIRMAR la creación, no antes. Si el
+  // POST falla o Calendar no está conectado, el flag queda a false y el
+  // evento se reintenta en la siguiente pulsación. _enviando evita que dos
+  // pulsaciones seguidas creen dos eventos mientras la primera está en vuelo.
   const reg = regDia()[idxActual];
-  if (reg && !reg.eventoCreado) {
-    reg.eventoCreado = true;
-    gcalCrearEvento(diaActual.fecha, reg, ing.plan_items || []);
+  if (reg && !reg.eventoCreado && !reg._enviando) {
+    reg._enviando = true;
+    gcalCrearEvento(diaActual.fecha, reg, ing.plan_items || [])
+      .finally(() => { reg._enviando = false; });
   }
 
   // No se auto-avanza: el usuario navega con las flechas ‹ › y accede
@@ -1496,6 +1646,8 @@ window.addEventListener('load', () => {
   const vEl = document.getElementById('app-version');
   if (vEl) vEl.textContent = APP_VERSION;
   gcalInit();
+  // v4.4: si hay estado guardado se entra directo al registro.
+  if (!restaurarEstado()) actualizarPantallaImport();
 });
 </script>
 </body>
