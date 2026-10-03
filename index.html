@@ -286,6 +286,20 @@
     letter-spacing: 0.01em; transition: opacity 0.1s;
   }
   .btn-confirm:active { opacity: 0.85; transform: scale(0.99); }
+  /* v4.5: una ingesta ya registrada no ofrece "Confirmar" en verde, para
+     que se vea de un vistazo que lo que toca es modificarla, no repetirla. */
+  .btn-confirm.is-done {
+    background: var(--surface-2); color: var(--text-2);
+    border: 0.5px solid var(--border-strong);
+  }
+  .btn-edit-destacado {
+    border-color: var(--accent); color: var(--accent); font-weight: 600;
+  }
+  .edit-banner {
+    font-size: 14px; font-weight: 500; color: var(--warn-text);
+    background: var(--warn-light); border-radius: 8px;
+    padding: 7px 10px; text-align: center; margin-bottom: 10px;
+  }
   .btn-secondary {
     width: 100%; padding: 12px; font-size: 17px;
     border-radius: var(--radius); border: 0.5px solid var(--border-strong);
@@ -319,16 +333,7 @@
   }
   .btn-demo:active { background: var(--surface-2); }
 
-  /* ── Done screen ── */
-  .screen-done {
-    flex: 1; display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    padding: 32px 24px; gap: 14px; text-align: center;
-  }
-  .done-check { font-size: 66px; color: var(--accent); }
-  .done-title { font-size: 25px; font-weight: 600; }
-  .done-sub { font-size: 17px; color: var(--text-2); line-height: 1.6; max-width: 280px; }
-  .done-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 280px; margin-top: 8px; }
+  /* ── Export ── */
   .btn-export {
     padding: 15px; border-radius: var(--radius);
     background: var(--accent); color: #fff;
@@ -522,26 +527,6 @@
     </div>
   </div>
 
-  <!-- Pantalla: día completo -->
-  <div id="screen-done" style="display:none;flex-direction:column;height:100%">
-    <div class="topbar">
-      <div class="topbar-left">
-        <span class="topbar-semana" id="done-semana"></span>
-        <span class="topbar-dia" id="done-dia"></span>
-      </div>
-    </div>
-    <div class="screen-done">
-      <div class="done-check">✓</div>
-      <div class="done-title">Día completado</div>
-      <div class="done-sub" id="done-sub"></div>
-      <div class="done-actions">
-        <button class="btn-export" onclick="exportarJSON()">Exportar registro JSON</button>
-        <button class="btn-demo" onclick="verResumenDia()">Ver resumen del día</button>
-        <button class="btn-demo" onclick="cambiarPlan()">Cargar otro plan</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Pantalla: resumen del día -->
   <div id="screen-resumen" style="display:none;flex-direction:column;height:100%">
     <div class="topbar">
@@ -553,9 +538,15 @@
         <button class="icon-btn-top" onclick="volverDesdeResumen()">✕</button>
       </div>
     </div>
+    <div class="time-selector-bar">
+      <button class="nav-arrow" id="res-prev" onclick="navegarDiaResumen(-1)" aria-label="Día anterior">‹</button>
+      <select class="day-select" id="res-day-select" onchange="onResDayChange()" aria-label="Seleccionar día"></select>
+      <button class="nav-arrow" id="res-next" onclick="navegarDiaResumen(1)" aria-label="Día siguiente">›</button>
+    </div>
     <div class="screen-resumen" id="resumen-content"></div>
     <div class="bottombar">
-      <button class="btn-export" onclick="exportarJSON()">Exportar registro JSON</button>
+      <div class="next-hint" id="res-semana-hint"></div>
+      <button class="btn-export" onclick="exportarJSON()">Exportar SEMANA completa (JSON)</button>
     </div>
   </div>
 
@@ -685,12 +676,11 @@ function actualizarPantallaImport() {
       : '';
   }
 }
-let pantallaAnterior = 'main';
 
 // ══════════════════════════════════════════════════════════════
 // VERSIÓN DE LA APP  (actualizar en cada despliegue)
 // ══════════════════════════════════════════════════════════════
-const APP_VERSION = 'v4.4';
+const APP_VERSION = 'v4.5';
 
 // ══════════════════════════════════════════════════════════════
 // GOOGLE CALENDAR
@@ -806,6 +796,50 @@ async function gcalCrearEvento(fecha, reg, planItems) {
   }
 }
 
+// v4.5: una ingesta ya registrada puede modificarse después. Si su evento
+// existe en Calendar se actualiza en sitio usando el eventId que v4.4 empezó
+// a guardar. Si el evento se borró a mano (404/410) se olvida el id para que
+// la siguiente confirmación lo vuelva a crear.
+async function gcalActualizarEvento(fecha, reg, planItems) {
+  if (!gcalConectado() || !reg?.eventId) return;
+  try {
+    const token = localStorage.getItem('gcal_token');
+    const tipo = reg.tipo;
+    const hora = reg.hora_real || reg.hora || '12:00';
+    const dur = GCAL_DUR[tipo] != null ? GCAL_DUR[tipo] : 30;
+    const res = await fetch(
+      'https://www.googleapis.com/calendar/v3/calendars/' + encodeURIComponent(GCAL_CALENDAR_ID) +
+      '/events/' + encodeURIComponent(reg.eventId),
+      { method: 'PATCH',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          summary: ((GCAL_EMO[tipo] || '') + ' ' + tipoDisplay(tipo)).trim(),
+          description: gcalDescripcion(reg, planItems),
+          start: { dateTime: gcalLocalDateTime(fecha, hora, 0), timeZone: 'Europe/Madrid' },
+          end:   { dateTime: gcalLocalDateTime(fecha, hora, dur), timeZone: 'Europe/Madrid' },
+        }) }
+    );
+    if (res.status === 401) {
+      localStorage.removeItem('gcal_token');
+      localStorage.removeItem('gcal_expires_at');
+      gcalUpdateUI();
+      toast('Sesión Calendar expirada — reconecta');
+      return;
+    }
+    if (res.status === 404 || res.status === 410) {
+      reg.eventoCreado = false;
+      reg.eventId = null;
+      guardarEstado();
+      toast('Ese evento ya no está en Calendar — pulsa Confirmar para recrearlo');
+      return;
+    }
+    if (!res.ok) { toast('Calendar: error ' + res.status); return; }
+    toast('📅 Evento actualizado');
+  } catch (e) {
+    toast('Calendar: ' + (e.message || 'error'));
+  }
+}
+
 function gcalUpdateUI() {
   const on = gcalConectado();
   const pill = document.getElementById('gcal-pill');
@@ -826,7 +860,7 @@ function toast(msg) {
 }
 
 function mostrarPantalla(nombre) {
-  ['import','main','done','resumen'].forEach(n => {
+  ['import','main','resumen'].forEach(n => {
     const el = document.getElementById('screen-' + n);
     el.style.display = n === nombre ? 'flex' : 'none';
     if (n === nombre) el.style.flexDirection = 'column';
@@ -1159,7 +1193,13 @@ function renderIngestaActual() {
       </div>`;
   }).join('');
 
+  const yaRegistrada = !!regDia()[idxActual];
+  const banner = (modoEditar && yaRegistrada)
+    ? '<div class="edit-banner">Modificando una ingesta ya registrada · pulsa Guardar cambios</div>'
+    : '';
+
   card.innerHTML = `
+    ${banner}
     <div class="ingesta-header">
       <div class="ingesta-tipo">
         <span>${emojiTipo(ing.tipo)}</span>
@@ -1201,19 +1241,77 @@ function renderIngestaActual() {
 
 function actualizarBotones() {
   const enEdicion = modoEditar;
-  const eventoHecho = !!regDia()[idxActual]?.eventoCreado;
+  const registrada = !!regDia()[idxActual];
   const btnConfirm = document.getElementById('btn-confirm');
   const btnEdit = document.getElementById('btn-edit');
-  document.getElementById('btn-confirm-icon').textContent = enEdicion ? '✓' : '✓';
-  document.getElementById('btn-confirm-text').textContent = enEdicion ? 'Guardar cambios' : (eventoHecho ? 'Confirmado ✓' : 'Confirmar');
-  btnEdit.textContent = enEdicion ? 'Cancelar' : 'Editar';
+  document.getElementById('btn-confirm-icon').textContent = enEdicion ? '✓' : (registrada ? '✓' : '✓');
+  document.getElementById('btn-confirm-text').textContent = enEdicion
+    ? 'Guardar cambios'
+    : (registrada ? 'Confirmado ✓' : 'Confirmar');
+  btnConfirm.classList.toggle('is-done', !enEdicion && registrada);
+  btnEdit.textContent = enEdicion ? 'Cancelar' : (registrada ? 'Modificar lo registrado' : 'Editar');
+  btnEdit.classList.toggle('btn-edit-destacado', !enEdicion && registrada);
 }
 
-// ── Acciones ──────────────────────────────────────────────────
-function toggleEditar() {
-  modoEditar = !modoEditar;
+// ── Edición de una ingesta (v4.5) ─────────────────────────────
+// Hasta v4.4 cada cambio se persistía en el onchange del campo, así que
+// "Cancelar" no revertía nada. Ahora se guarda una instantánea al entrar
+// en edición y cancelar la restaura.
+let snapshotEdicion = null;
+
+function entrarEdicion() {
+  const reg = regDia()[idxActual];
+  snapshotEdicion = {
+    fecha: diaActual.fecha,
+    idx: idxActual,
+    existia: !!reg,
+    reg: reg ? JSON.parse(JSON.stringify(reg, _sinInternos)) : null,
+  };
+  modoEditar = true;
   renderIngestaActual();
   actualizarBotones();
+}
+
+function cancelarEdicion() {
+  const s = snapshotEdicion;
+  modoEditar = false;
+  snapshotEdicion = null;
+  if (s && s.fecha === diaActual?.fecha && s.idx === idxActual) {
+    if (s.existia) registros[s.fecha][s.idx] = s.reg;
+    else if (registros[s.fecha]) delete registros[s.fecha][s.idx];
+    guardarEstado();
+  }
+  renderMain();
+  toast('Cambios descartados');
+}
+
+function toggleEditar() {
+  if (modoEditar) cancelarEdicion();
+  else entrarEdicion();
+}
+
+// Lee las cantidades de los inputs antes de guardar. En iOS, tocar
+// "Guardar cambios" no siempre dispara el onchange del campo que tiene el
+// foco: hasta v4.4 ese valor recién tecleado se perdía sin aviso, y es la
+// razón de que editar una comida ya registrada pareciera no funcionar.
+function leerItemsDelDOM() {
+  const items = itemsActuales(idxActual);
+  document.querySelectorAll('#items-list .item-row').forEach(fila => {
+    const i = parseInt(fila.dataset.idx);
+    const input = fila.querySelector('.item-qty-input');
+    if (isNaN(i) || !items[i] || !input) return;
+    const v = input.value;
+    if (items[i].modo === 'uds') {
+      const uds = v === '' ? null : parseFloat(v);
+      items[i].uds = uds;
+      items[i].peso_g = (uds != null && items[i].g_por_ud != null)
+        ? Math.round(uds * items[i].g_por_ud * 10) / 10
+        : null;
+    } else {
+      items[i].peso_g = v === '' ? null : parseFloat(v);
+    }
+  });
+  return items;
 }
 
 function cambiarCantidad(idx, valor) {
@@ -1320,23 +1418,35 @@ function guardarNota(valor) {
   if (nota === notaPrevia) return;
   registros[diaActual.fecha][idxActual].nota = nota;
   guardarEstado();
-  const evYaCreado = !!regDia()[idxActual]?.eventoCreado;
-  if (evYaCreado) {
-    toast('Nota guardada (no se actualiza en Calendar)');
-  } else {
-    toast('Nota guardada');
+  const reg = regDia()[idxActual];
+  if (reg?.eventoCreado && reg.eventId) {
+    gcalActualizarEvento(diaActual.fecha, reg, ingestasDelDia()[idxActual]?.plan_items || []);
   }
+  toast('Nota guardada');
 }
 
 function accionPrincipal() {
   const ing = ingestasDelDia()[idxActual];
 
   if (modoEditar) {
+    const items = leerItemsDelDOM();
+    const notaEl = document.getElementById('nota-input');
+    const nota = notaEl ? (notaEl.value || '').trim() : null;
     modoEditar = false;
-    guardarReg(itemsActuales(idxActual), true);
-    renderIngestaActual();
-    actualizarBotones();
-    toast('Cambios guardados · pulsa Confirmar para registrar');
+    snapshotEdicion = null;
+    guardarReg(items, true);
+    if (nota !== null) {
+      registros[diaActual.fecha][idxActual].nota = nota;
+      guardarEstado();
+    }
+    renderMain();
+    const reg = regDia()[idxActual];
+    if (reg?.eventoCreado && reg.eventId) {
+      gcalActualizarEvento(diaActual.fecha, reg, ing.plan_items || []);
+      toast('Cambios guardados');
+    } else {
+      toast('Cambios guardados · pulsa Confirmar para registrar');
+    }
     return;
   }
 
@@ -1363,25 +1473,66 @@ function accionPrincipal() {
   renderMain();
 }
 
-// ── Pantalla completado ───────────────────────────────────────
-function mostrarPantallaDone() {
-  const total = ingestasDelDia().length;
-  const confirmadas = Object.keys(regDia()).length;
-  document.getElementById('done-semana').textContent = PLAN?.semana || '';
-  document.getElementById('done-dia').textContent = labelFecha(diaActual.fecha);
-  document.getElementById('done-sub').textContent =
-    confirmadas + ' de ' + total + ' ingestas registradas. Exporta el JSON el lunes para el análisis de la semana.';
-  mostrarPantalla('done');
+// ── Resumen ───────────────────────────────────────────────────
+// v4.5: totales de la SEMANA, no solo del día. El export siempre ha sido
+// semanal; lo que faltaba era verlo desde la pantalla donde se exporta.
+function totalesSemana() {
+  const dias = PLAN?.dias || [];
+  let tot = 0, reg = 0, diasCon = 0;
+  dias.forEach(d => {
+    const n = (d.ingestas || []).length;
+    const r = Object.keys(registros[d.fecha] || {}).length;
+    tot += n; reg += r;
+    if (r > 0) diasCon++;
+  });
+  return { tot, reg, diasCon, diasTot: dias.length };
 }
 
-function verResumenDia() {
-  pantallaAnterior = 'done';
+function poblarSelectorDiaResumen() {
+  const sel = document.getElementById('res-day-select');
+  if (!sel || !PLAN) return;
+  const dias = PLAN.dias || [];
+  const D = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const M = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  sel.innerHTML = dias.map((d, i) => {
+    const f = new Date(d.fecha + 'T12:00:00');
+    const n = (d.ingestas || []).length;
+    const r = Object.keys(registros[d.fecha] || {}).length;
+    const marca = (n && r >= n) ? '✓ ' : (r ? '· ' : '');
+    const sl = d.fecha === diaActual?.fecha ? 'selected' : '';
+    return `<option value="${i}" ${sl}>${marca}${D[f.getDay()]} ${f.getDate()} ${M[f.getMonth()]} · ${r}/${n}</option>`;
+  }).join('');
+  const idx = dias.findIndex(d => d.fecha === diaActual?.fecha);
+  const prev = document.getElementById('res-prev');
+  const next = document.getElementById('res-next');
+  if (prev) prev.disabled = idx <= 0;
+  if (next) next.disabled = idx < 0 || idx >= dias.length - 1;
+}
+
+function onResDayChange() {
+  const dias = PLAN?.dias || [];
+  const i = parseInt(document.getElementById('res-day-select').value);
+  if (!dias[i]) return;
+  cambiarDiaResumen(dias[i]);
+}
+
+function navegarDiaResumen(dir) {
+  const dias = PLAN?.dias || [];
+  const i = dias.findIndex(d => d.fecha === diaActual?.fecha) + dir;
+  if (i < 0 || i >= dias.length) return;
+  cambiarDiaResumen(dias[i]);
+}
+
+function cambiarDiaResumen(dia) {
+  diaActual = dia;
+  idxActual = 0;
+  modoEditar = false;
+  snapshotEdicion = null;
+  guardarEstado();
   irResumen();
 }
 
-// ── Pantalla resumen ──────────────────────────────────────────
 function irResumen() {
-  pantallaAnterior = pantallaAnterior || 'main';
   document.getElementById('res-semana').textContent = PLAN?.semana || '';
   document.getElementById('res-dia').textContent = labelFecha(diaActual.fecha);
   const ingestas = ingestasDelDia();
@@ -1391,7 +1542,21 @@ function irResumen() {
   const confirmadas = ingestas.filter((_, i) => reg[i]);
   const pendientes = ingestas.filter((_, i) => !reg[i]);
 
-  let html = '';
+  const sem = totalesSemana();
+  let html = `
+    <div class="resumen-section">
+      <div class="resumen-title">Semana ${PLAN?.semana || ''}</div>
+      <div class="resumen-card">
+        <div class="resumen-row">
+          <div class="resumen-tipo">Ingestas registradas</div>
+          <div class="resumen-meta"><span class="resumen-hora">${sem.reg} de ${sem.tot}</span></div>
+        </div>
+        <div class="resumen-row">
+          <div class="resumen-tipo">Días con registro</div>
+          <div class="resumen-meta"><span class="resumen-hora">${sem.diasCon} de ${sem.diasTot}</span></div>
+        </div>
+      </div>
+    </div>`;
 
   if (confirmadas.length) {
     html += '<div class="resumen-section"><div class="resumen-title">Registradas</div><div class="resumen-card">';
@@ -1427,21 +1592,24 @@ function irResumen() {
     html += '</div></div>';
   }
 
-  content.innerHTML = html || '<div style="color:var(--text-3);font-size: 17px;padding:20px;text-align:center">Sin ingestas en el plan.</div>';
+  content.innerHTML = html;
+  const pie = document.getElementById('res-semana-hint');
+  if (pie) pie.textContent = 'El export incluye los ' + sem.diasTot + ' días de la semana, no solo este.';
+  poblarSelectorDiaResumen();
   mostrarPantalla('resumen');
 }
 
 function volverDesdeResumen() {
-  if (pantallaAnterior === 'done') mostrarPantalla('done');
-  else { renderMain(); mostrarPantalla('main'); }
+  renderMain();
+  mostrarPantalla('main');
 }
 
 function editarDesdeResumen(idx) {
   idxActual = idx;
-  modoEditar = true;
+  modoEditar = false;
   renderMain();
   mostrarPantalla('main');
-  pantallaAnterior = 'main';
+  entrarEdicion();
 }
 
 function irAIngesta(idx) {
@@ -1449,11 +1617,13 @@ function irAIngesta(idx) {
   modoEditar = false;
   renderMain();
   mostrarPantalla('main');
-  pantallaAnterior = 'main';
 }
 
 // ── Exportar JSON ─────────────────────────────────────────────
 function exportarJSON() {
+  // El export SIEMPRE es de la semana entera: recorre PLAN.dias, no el día
+  // activo. Las ingestas sin registrar viajan con registrado:false para que
+  // el pipeline distinga "no registrado" de "no planificado".
   // Normaliza un item a los campos que entiende el pipeline: los ítems
   // en uds se exportan resueltos a gramos (peso_g), sin modo/uds/g_por_ud.
   const norm = it => {
@@ -1513,6 +1683,8 @@ function exportarJSON() {
 
   const jsonStr = JSON.stringify(salida, null, 2);
   const nombreArchivo = (PLAN?.semana || 'SXX').replace('-','_') + '_registro_real.json';
+  const sem = totalesSemana();
+  const resumenTxt = dias.length + ' días · ' + sem.reg + ' de ' + sem.tot + ' ingestas registradas';
 
   // Intento 1: descarga estándar (Blob + link.download)
   try {
@@ -1536,16 +1708,16 @@ function exportarJSON() {
     if (esStandalone) {
       // En PWA standalone iOS, la descarga puede fallar sin aviso.
       // Mostramos el modal fallback tras un delay corto.
-      setTimeout(() => mostrarModalExport(jsonStr, nombreArchivo), 300);
+      setTimeout(() => mostrarModalExport(jsonStr, nombreArchivo, resumenTxt), 300);
     } else {
-      toast('Descargando ' + nombreArchivo);
+      toast('Descargando ' + nombreArchivo + ' · ' + resumenTxt);
     }
   } catch (e) {
-    mostrarModalExport(jsonStr, nombreArchivo);
+    mostrarModalExport(jsonStr, nombreArchivo, resumenTxt);
   }
 }
 
-function mostrarModalExport(jsonStr, nombreArchivo) {
+function mostrarModalExport(jsonStr, nombreArchivo, resumenTxt) {
   // Si ya existe, no duplicar
   if (document.getElementById('export-modal')) return;
 
@@ -1559,7 +1731,7 @@ function mostrarModalExport(jsonStr, nombreArchivo) {
         <button class="export-modal-close" onclick="cerrarModalExport()" aria-label="Cerrar">✕</button>
       </div>
       <div class="export-modal-body">
-        <p class="export-modal-hint">Si la descarga no ha funcionado, copia el contenido:</p>
+        <p class="export-modal-hint">${resumenTxt || ''}<br>Si la descarga no ha funcionado, copia el contenido:</p>
         <textarea class="export-modal-textarea" id="export-textarea" readonly onclick="this.select()"></textarea>
       </div>
       <div class="export-modal-actions">
